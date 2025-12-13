@@ -5,3 +5,13 @@
 [submodule ".format"]
 	path = .format
 	url = https://github.com/black-desk/.format
+[submodule "third_party/librime-rs"]
+	path = third_party/librime-rs
+	url = https://github.com/black-desk/librime-rs
+	branch = master
+[submodule "third_party/librime"]
+	path = third_party/librime
+	url = https://github.com/rime/librime.git
+[submodule "third_party/plum"]
+	path = third_party/plum
+	url = https://github.com/rime/plum.git
