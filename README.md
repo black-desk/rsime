@@ -4,63 +4,10 @@ SPDX-FileCopyrightText: 2025 Chen Linxuan <me@black-desk.cn>
 SPDX-License-Identifier: MIT
 -->
 
-<!-- TODO: Update project name -->
+# rsime
 
-# Template
-
-[![checks][badge-shields-io-checks]][actions]
-[![commit activity][badge-shields-io-commit-activity]][commits]
-[![contributors][badge-shields-io-contributors]][contributors]
-[![release date][badge-shields-io-release-date]][releases]
-![commits since release][badge-shields-io-commits-since-release]
-[![codecov][badge-shields-io-codecov]][codecov]
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-checks]:
-  https://img.shields.io/github/check-runs/black-desk/template/master
-
-<!-- TODO: Update project links -->
-
-[actions]: https://github.com/black-desk/template/actions
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-commit-activity]:
-  https://img.shields.io/github/commit-activity/w/black-desk/template/master
-
-<!-- TODO: Update project links -->
-
-[commits]: https://github.com/black-desk/template/commits/master
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-contributors]:
-  https://img.shields.io/github/contributors/black-desk/template
-
-<!-- TODO: Update project links -->
-
-[contributors]: https://github.com/black-desk/template/graphs/contributors
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-release-date]:
-  https://img.shields.io/github/release-date/black-desk/template
-
-<!-- TODO: Update project links -->
-
-[releases]: https://github.com/black-desk/template/releases
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-commits-since-release]:
-  https://img.shields.io/github/commits-since/black-desk/template/latest
-
-<!-- TODO: Update project links -->
-
-[badge-shields-io-codecov]:
-  https://codecov.io/github/black-desk/template/graph/badge.svg?token=6TSVGQ4L9X
-[codecov]: https://codecov.io/github/black-desk/template
+A command-line Chinese input tool powered by [RIME](https://rime.im/), designed
+for TUI environments where no graphical input method is available.
 
 en | [zh_CN](README.zh_CN.md)
 
@@ -69,31 +16,102 @@ en | [zh_CN](README.zh_CN.md)
 > This English README is translated from the Chinese version using LLM and may
 > contain errors.
 
-<!-- TODO: Add project description -->
+## Features
 
-My personal project template
+- **Interactive TUI mode** — type pinyin and select candidates directly in the terminal.
+- **Stdio mode** — for editor integration (Vim-style key input, JSONL output).
+- Online schema installation via plum (no local plum needed).
+- List / switch input schemas.
+- Shell completion and keybinding support.
+
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) toolchain
+- [vcpkg](https://vcpkg.io/) (with `VCPKG_ROOT` set)
+- C/C++ build toolchain (CMake, a C compiler, etc.)
+- Git (for fetching submodules and installing schemas)
+
+## Building
+
+Clone with submodules and build using `make`:
+
+```bash
+git clone --recurse-submodules https://github.com/black-desk/rsime.git
+cd rsime
+make
+```
+
+The build process:
+
+1. Installs the `rime` library via vcpkg.
+2. Compiles the Rust project with `cargo build`, pointing to the vcpkg-built
+   headers and libraries.
 
 ## Usage
 
-<!-- TODO: Add project usage instructions -->
+**Interactive TUI input:**
 
-1. Use gh to create a repository from the template:
+```bash
+rsime tui
+```
 
-   ```bash
-   gh repo create --public --template black-desk/template
-   ```
+**Stdio mode (editor integration):**
 
-2. Edit project files, fill in content, and remove all `TODO` comments.
+```bash
+rsime stdio
+```
 
-3. Run the check script to ensure all `TODO` comments have been removed:
+Accepts Vim-style key notation (e.g. `<CR>`, `<Space>`, `<Esc>`, `<BS>`, `<Up>`, `<Down>`, etc.), one key per line, and outputs JSONL responses.
 
-   ```bash
-   ./scripts/ls-todo.sh
-   ```
+**Install schemas online (via plum, no local plum needed):**
+
+```bash
+rsime install               # install preset schemas
+rsime install double-pinyin  # install a specific package
+```
+
+**List available schemas:**
+
+```bash
+rsime list-schemas
+```
+
+**Show current schema:**
+
+```bash
+rsime current-schema
+```
+
+**Set active input schema:**
+
+```bash
+rsime set-schema double_pinyin_flypy
+```
+
+**Shell init (completion + optional keybinding):**
+
+```bash
+rsime shell-init bash          # completion only
+rsime shell-init bash --bind   # completion + Alt-I binding for TUI
+rsime shell-init zsh --bind    # zsh version
+rsime shell-init fish --bind   # fish version
+```
+
+**Write debug log:**
+
+```bash
+rsime -l /tmp/rsime.log tui
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `RIME_USER_DATA_DIR` | Path to RIME user data directory (also used as shared data directory) | `~/.config/rsime` |
 
 ## License
 
-Unless otherwise specified, the code of this project are open source under the
+Unless otherwise specified, the code of this project is open source under the
 GNU General Public License version 3 or any later version, while documentation,
 configuration files, and scripts used in the development and maintenance process
 are open source under the MIT License.
