@@ -173,7 +173,7 @@ fn convert(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
             session.simulate_key_sequence(" ")?;
         }
     }
-    print!("{}", output);
+    println!("{}", output);
     Ok(())
 }
 
