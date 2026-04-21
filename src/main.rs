@@ -1,11 +1,19 @@
 use std::fs::{self, File};
 use std::io::Write;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
 use anyhow::{bail, Result};
 use clap::Parser;
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use ratatui::layout::Rect;
+use ratatui::style::{Style, Stylize};
+use ratatui::widgets::Paragraph;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use rime_api::{
     create_session, deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
@@ -58,6 +66,10 @@ struct Cli {
     /// Output results as JSON
     #[arg(long)]
     json: bool,
+
+    /// Interactive TUI mode for composing Chinese text
+    #[arg(long)]
+    tui: bool,
 }
 
 // JSON output types
@@ -241,6 +253,131 @@ fn convert(session: &Session, key_sequence: &str, pick: bool, json: bool) -> Res
     Ok(())
 }
 
+fn run_tui(session: &Session) -> Result<()> {
+    let tty = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")?;
+
+    // Set raw mode on /dev/tty (not stdin, which may be a pipe inside $())
+    let tty_fd = tty.as_raw_fd();
+    let mut termios: libc::termios = unsafe { std::mem::zeroed() };
+    if unsafe { libc::tcgetattr(tty_fd, &mut termios) } == -1 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let saved_termios = termios;
+    unsafe { libc::cfmakeraw(&mut termios) };
+    if unsafe { libc::tcsetattr(tty_fd, libc::TCSANOW, &termios) } == -1 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+
+    let mut tty = tty;
+    crossterm::execute!(tty, EnterAlternateScreen, terminal::Clear(terminal::ClearType::All))?;
+    let backend = CrosstermBackend::new(tty);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut output = String::new();
+
+    let result = tui_loop(session, &mut terminal, &mut output);
+
+    // Restore terminal
+    crossterm::execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+    )?;
+    terminal.show_cursor()?;
+
+    // Restore original terminal settings
+    unsafe { libc::tcsetattr(tty_fd, libc::TCSANOW, &saved_termios) };
+
+    result?;
+
+    if !output.is_empty() {
+        println!("{}", output);
+    }
+    Ok(())
+}
+
+fn tui_loop(
+    session: &Session,
+    terminal: &mut Terminal<CrosstermBackend<std::fs::File>>,
+    output: &mut String,
+) -> Result<()> {
+    loop {
+        let ctx = session.context();
+        let (preedit, candidates, _highlighted) = match &ctx {
+            Some(ctx) => {
+                let comp = ctx.composition();
+                let menu = ctx.menu();
+                let preedit = comp.preedit.unwrap_or("").to_string();
+                let cands: Vec<String> = menu
+                    .candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        let sel = if i == menu.highlighted_candidate_index { ">" } else { " " };
+                        format!("{}{}.{}", sel, i + 1, c.text)
+                    })
+                    .collect();
+                (preedit, cands, menu.highlighted_candidate_index)
+            }
+            None => (String::new(), Vec::new(), 0),
+        };
+
+        while let Some(commit) = session.commit() {
+            output.push_str(commit.text());
+        }
+
+        terminal.draw(|f| {
+            let area = f.area();
+            let rows = Rect { y: area.height.saturating_sub(2), height: 2, ..area };
+
+            let comp_line = if preedit.is_empty() && candidates.is_empty() {
+                Paragraph::new("Type pinyin, Esc to finish").dim()
+            } else {
+                Paragraph::new(preedit.clone())
+            };
+
+            let cand_text = candidates.join("  ");
+            let cand_line = Paragraph::new(cand_text).style(Style::default());
+
+            f.render_widget(comp_line, Rect { height: 1, ..rows });
+            f.render_widget(cand_line, Rect { y: rows.y + 1, height: 1, ..rows });
+        })?;
+
+        let ev = event::read()?;
+        match ev {
+            Event::Key(key) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                    break;
+                }
+
+                let rime_key = match key.code {
+                    KeyCode::Char(c) => Some(rime_api::KeyEvent { key_code: c as i32, modifiers: 0 }),
+                    KeyCode::Backspace => Some(rime_api::KeyEvent { key_code: 65288, modifiers: 0 }),
+                    KeyCode::Enter => Some(rime_api::KeyEvent { key_code: 65293, modifiers: 0 }),
+                    KeyCode::Esc => None,
+                    KeyCode::Up => Some(rime_api::KeyEvent { key_code: 65362, modifiers: 0 }),
+                    KeyCode::Down | KeyCode::Tab => Some(rime_api::KeyEvent { key_code: 65364, modifiers: 0 }),
+                    KeyCode::PageUp => Some(rime_api::KeyEvent { key_code: 65365, modifiers: 0 }),
+                    KeyCode::PageDown => Some(rime_api::KeyEvent { key_code: 65366, modifiers: 0 }),
+                    _ => None,
+                };
+
+                match rime_key {
+                    None => break,
+                    Some(rk) => {
+                        session.process_key(rk);
+                    }
+                }
+            }
+            Event::Resize(_, _) => {}
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -277,6 +414,13 @@ fn main() -> Result<()> {
 
     if let Some(schema) = &cli.schema {
         session.select_schema(schema)?;
+    }
+
+    if cli.tui {
+        let result = run_tui(&session);
+        let _ = session.close();
+        finalize();
+        return result;
     }
 
     match cli.key_sequence {
