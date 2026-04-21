@@ -10,6 +10,7 @@ use rime_api::{
     create_session, deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
 };
+use serde::Serialize;
 
 static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
 
@@ -53,6 +54,43 @@ struct Cli {
     /// Install RIME input schemas via plum (no local plum needed)
     #[arg(long, num_args = 0..)]
     install: Option<Vec<String>>,
+
+    /// Output results as JSON
+    #[arg(long)]
+    json: bool,
+}
+
+// JSON output types
+
+#[derive(Serialize)]
+struct JsonSchema {
+    schema_id: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct JsonCurrentSchema {
+    schema_id: String,
+}
+
+#[derive(Serialize)]
+struct JsonConversion {
+    output: String,
+}
+
+#[derive(Serialize)]
+struct JsonCandidate {
+    text: String,
+    comment: Option<String>,
+}
+
+#[derive(Serialize)]
+struct JsonCandidates {
+    candidates: Vec<JsonCandidate>,
+}
+
+fn print_json(value: &impl Serialize) {
+    println!("{}", serde_json::to_string(value).unwrap());
 }
 
 fn init_rime() -> Result<Traits> {
@@ -82,11 +120,22 @@ fn init_rime() -> Result<Traits> {
     Ok(traits)
 }
 
-fn list_schemas_cmd() -> Result<()> {
+fn list_schemas_cmd(json: bool) -> Result<()> {
     let _traits = init_rime()?;
     let schemas = get_schema_list();
-    for s in &schemas {
-        println!("{}\t{}", s.schema_id, s.name);
+    if json {
+        let out: Vec<JsonSchema> = schemas
+            .iter()
+            .map(|s| JsonSchema {
+                schema_id: s.schema_id.clone(),
+                name: s.name.clone(),
+            })
+            .collect();
+        print_json(&out);
+    } else {
+        for s in &schemas {
+            println!("{}\t{}", s.schema_id, s.name);
+        }
     }
     Ok(())
 }
@@ -136,22 +185,33 @@ fn install_cmd(packages: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn show_candidates(session: &Session) {
+fn get_candidates(session: &Session) -> Vec<JsonCandidate> {
     let Some(ctx) = session.context() else {
-        return;
+        return Vec::new();
     };
     let menu = ctx.menu();
-    for (i, cand) in menu.candidates.iter().enumerate() {
-        eprintln!(
-            "{}. {}{}",
-            i + 1,
-            cand.text,
-            cand.comment.unwrap_or("")
-        );
+    menu.candidates
+        .iter()
+        .map(|c| JsonCandidate {
+            text: c.text.to_string(),
+            comment: c.comment.map(String::from),
+        })
+        .collect()
+}
+
+fn show_candidates(session: &Session, json: bool) {
+    let candidates = get_candidates(session);
+    if json {
+        print_json(&JsonCandidates { candidates });
+    } else {
+        for (i, cand) in candidates.iter().enumerate() {
+            let comment = cand.comment.as_deref().unwrap_or("");
+            println!("{}. {}{}", i + 1, cand.text, comment);
+        }
     }
 }
 
-fn convert(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
+fn convert(session: &Session, key_sequence: &str, pick: bool, json: bool) -> Result<()> {
     session.simulate_key_sequence(key_sequence)?;
 
     let mut output = String::new();
@@ -167,13 +227,17 @@ fn convert(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
             break;
         }
         if pick {
-            show_candidates(session);
+            show_candidates(session, json);
             return Ok(());
         } else {
             session.simulate_key_sequence(" ")?;
         }
     }
-    println!("{}", output);
+    if json {
+        print_json(&JsonConversion { output });
+    } else {
+        println!("{}", output);
+    }
     Ok(())
 }
 
@@ -185,14 +249,20 @@ fn main() -> Result<()> {
     }
 
     if cli.list_schemas {
-        return list_schemas_cmd();
+        return list_schemas_cmd(cli.json);
     }
 
     if cli.current_schema {
         let _traits = init_rime()?;
         let session = create_session()?;
         let status = session.status()?;
-        println!("{}", status.schema_id());
+        if cli.json {
+            print_json(&JsonCurrentSchema {
+                schema_id: status.schema_id().to_string(),
+            });
+        } else {
+            println!("{}", status.schema_id());
+        }
         return Ok(());
     }
 
@@ -210,7 +280,7 @@ fn main() -> Result<()> {
     }
 
     match cli.key_sequence {
-        Some(ref seq) => convert(&session, seq, cli.pick)?,
+        Some(ref seq) => convert(&session, seq, cli.pick, cli.json)?,
         None => bail!("no key sequence provided (run with --help for usage)"),
     }
 
