@@ -1,11 +1,13 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{stdin, BufRead, Write};
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use rime_api::{
-    create_session, finalize, full_deploy_and_wait, initialize, set_notification_handler, setup,
+    create_session, deploy_on_changed, finalize, initialize, set_notification_handler, setup,
     DeployResult, Session, Traits,
 };
 
@@ -15,6 +17,11 @@ fn log(msg: &str) {
     let Ok(mut guard) = LOG_FILE.lock() else { return };
     let Some(file) = guard.as_mut() else { return };
     let _ = writeln!(file, "{}", msg);
+}
+
+fn default_user_data_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".config").join("rsime")
 }
 
 #[derive(Parser)]
@@ -34,6 +41,11 @@ struct Cli {
     /// Show candidates for selection when input doesn't end with a digit
     #[arg(short, long)]
     pick: bool,
+
+    /// Install RIME input schemas via plum (no local plum needed)
+    /// e.g. rsime --install :preset double-pinyin
+    #[arg(long, num_args = 0..)]
+    install: Option<Vec<String>>,
 }
 
 fn init_rime() -> Result<Traits> {
@@ -41,8 +53,8 @@ fn init_rime() -> Result<Traits> {
     traits.set_app_name("rime.console");
     let shared_data_dir =
         std::env::var("RIME_SHARED_DATA_DIR").unwrap_or_else(|_| "third_party/librime/data/minimal".to_string());
-    let user_data_dir =
-        std::env::var("RIME_USER_DATA_DIR").unwrap_or_else(|_| "/tmp/rime-user".to_string());
+    let user_data_dir = std::env::var("RIME_USER_DATA_DIR")
+        .unwrap_or_else(|_| default_user_data_dir().to_string_lossy().to_string());
     traits.set_shared_data_dir(&shared_data_dir);
     traits.set_user_data_dir(&user_data_dir);
     setup(&mut traits);
@@ -53,7 +65,7 @@ fn init_rime() -> Result<Traits> {
     });
 
     log("initializing...");
-    match full_deploy_and_wait() {
+    match deploy_on_changed() {
         DeployResult::Success => {}
         DeployResult::Failure => {
             log("deployment failed");
@@ -61,6 +73,51 @@ fn init_rime() -> Result<Traits> {
     }
     log("ready.");
     Ok(traits)
+}
+
+fn install_cmd(packages: &[String]) -> Result<()> {
+    let rime_dir = std::env::var("RIME_USER_DATA_DIR")
+        .unwrap_or_else(|_| default_user_data_dir().to_string_lossy().to_string());
+    fs::create_dir_all(&rime_dir)?;
+
+    let script_url = "https://raw.githubusercontent.com/rime/plum/master/rime-install";
+    let script = ureq::get(script_url).call()?.into_body().read_to_string()?;
+
+    let targets = if packages.is_empty() {
+        vec![":preset".to_string()]
+    } else {
+        packages.to_vec()
+    };
+
+    let plum_dir = PathBuf::from(
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
+    )
+    .join(".config")
+    .join("rsime-plum");
+
+    let mut child = Command::new("bash")
+        .env("rime_dir", &rime_dir)
+        .env("plum_dir", &plum_dir)
+        .env("no_update", "1")
+        .arg("-s")
+        .arg("--")
+        .args(&targets)
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(script.as_bytes())?;
+    }
+
+    let status = child.wait()?;
+    if !status.success() {
+        bail!(
+            "plum install failed with exit code {}",
+            status.code().unwrap_or(1)
+        );
+    }
+    Ok(())
 }
 
 fn show_candidates(session: &Session) {
@@ -125,7 +182,7 @@ fn interactive_mode(session: &mut Session) -> Result<()> {
             traits.set_app_name("rime.console");
             setup(&mut traits);
             initialize(&mut traits);
-            match full_deploy_and_wait() {
+            match deploy_on_changed() {
                 DeployResult::Success => {}
                 DeployResult::Failure => {
                     log("deployment failed");
@@ -251,6 +308,10 @@ fn print_session(session: &Session) {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(packages) = &cli.install {
+        return install_cmd(packages);
+    }
 
     if let Some(path) = &cli.log {
         let file = File::create(path)?;
