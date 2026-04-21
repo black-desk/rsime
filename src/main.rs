@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{stdin, BufRead, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
@@ -7,8 +7,8 @@ use std::sync::Mutex;
 use anyhow::{bail, Result};
 use clap::Parser;
 use rime_api::{
-    create_session, deploy_on_changed, finalize, initialize, set_notification_handler, setup,
-    DeployResult, Session, Traits,
+    create_session, deploy_on_changed, finalize, get_schema_list, initialize,
+    set_notification_handler, setup, DeployResult, Session, Traits,
 };
 
 static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
@@ -25,9 +25,9 @@ fn default_user_data_dir() -> PathBuf {
 }
 
 #[derive(Parser)]
-#[command(name = "rsime", about = "Emergency Chinese input for TUI")]
+#[command(name = "rsime", about = "Chinese input via RIME for TUI")]
 struct Cli {
-    /// Pinyin key sequence to convert (omit for interactive mode)
+    /// Pinyin key sequence to convert
     key_sequence: Option<String>,
 
     /// Select input schema by ID
@@ -38,12 +38,19 @@ struct Cli {
     #[arg(short, long)]
     log: Option<String>,
 
-    /// Show candidates for selection when input doesn't end with a digit
+    /// Show candidates instead of auto-selecting
     #[arg(short, long)]
     pick: bool,
 
+    /// List available input schemas
+    #[arg(long)]
+    list_schemas: bool,
+
+    /// Show current input schema
+    #[arg(long)]
+    current_schema: bool,
+
     /// Install RIME input schemas via plum (no local plum needed)
-    /// e.g. rsime --install :preset double-pinyin
     #[arg(long, num_args = 0..)]
     install: Option<Vec<String>>,
 }
@@ -73,6 +80,15 @@ fn init_rime() -> Result<Traits> {
     }
     log("ready.");
     Ok(traits)
+}
+
+fn list_schemas_cmd() -> Result<()> {
+    let _traits = init_rime()?;
+    let schemas = get_schema_list();
+    for s in &schemas {
+        println!("{}\t{}", s.schema_id, s.name);
+    }
+    Ok(())
 }
 
 fn install_cmd(packages: &[String]) -> Result<()> {
@@ -135,7 +151,7 @@ fn show_candidates(session: &Session) {
     }
 }
 
-fn cli_mode(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
+fn convert(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
     session.simulate_key_sequence(key_sequence)?;
 
     let mut output = String::new();
@@ -161,156 +177,23 @@ fn cli_mode(session: &Session, key_sequence: &str, pick: bool) -> Result<()> {
     Ok(())
 }
 
-fn interactive_mode(session: &mut Session) -> Result<()> {
-    let stdin = stdin();
-    let mut lines = stdin.lock().lines();
-    while let Some(Ok(line)) = lines.next() {
-        let line = if line.is_empty() { "\r" } else { &line };
-
-        if !session.find_session() {
-            *session = create_session()?;
-        }
-
-        if line == "exit" {
-            break;
-        }
-        if line == "reload" {
-            let _ = session.close();
-            finalize();
-            log("initializing...");
-            let mut traits = Traits::new();
-            traits.set_app_name("rime.console");
-            setup(&mut traits);
-            initialize(&mut traits);
-            match deploy_on_changed() {
-                DeployResult::Success => {}
-                DeployResult::Failure => {
-                    log("deployment failed");
-                }
-            }
-            log("ready.");
-            *session = create_session()?;
-            continue;
-        }
-
-        match session.simulate_key_sequence(line) {
-            Ok(()) => print_session(session),
-            Err(_) => log(&format!("Error processing key sequence: {}", line)),
-        }
-    }
-    Ok(())
-}
-
-fn print_status(session: &Session) {
-    let status = match session.status() {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    println!("schema: {} / {}", status.schema_id(), status.schema_name());
-    print!("status: ");
-    if status.is_disabled {
-        print!("disabled ");
-    }
-    if status.is_composing {
-        print!("composing ");
-    }
-    if status.is_ascii_mode {
-        print!("ascii ");
-    }
-    if status.is_full_shape {
-        print!("full_shape ");
-    }
-    if status.is_simplified {
-        print!("simplified ");
-    }
-    println!();
-}
-
-fn print_composition(ctx: &rime_api::Context) {
-    let comp = ctx.composition();
-    let preedit = match comp.preedit {
-        Some(p) => p,
-        None => return,
-    };
-    let bytes = preedit.as_bytes();
-    let start = comp.sel_start;
-    let end = comp.sel_end;
-    let cursor = comp.cursor_pos;
-    let mut i = 0;
-    let mut char_idx = 0;
-    while i <= bytes.len() {
-        if start < end {
-            if char_idx == start {
-                print!("[");
-            } else if char_idx == end {
-                print!("]");
-            }
-        }
-        if char_idx == cursor {
-            print!("|");
-        }
-        if i < bytes.len() {
-            let ch = &preedit[i..];
-            let ch_len = ch.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
-            print!("{}", &preedit[i..i + ch_len]);
-            i += ch_len;
-            char_idx += 1;
-        } else {
-            break;
-        }
-    }
-    println!();
-}
-
-fn print_menu(ctx: &rime_api::Context) {
-    let menu = ctx.menu();
-    if menu.num_candidates == 0 {
-        return;
-    }
-    println!(
-        "page: {}{} (of size {})",
-        menu.page_no + 1,
-        if menu.is_last_page { "$" } else { " " },
-        menu.page_size
-    );
-    for (i, cand) in menu.candidates.iter().enumerate() {
-        let highlighted = i == menu.highlighted_candidate_index;
-        print!(
-            "{}. {}{}{}{}\n",
-            i + 1,
-            if highlighted { "[" } else { " " },
-            cand.text,
-            if highlighted { "]" } else { " " },
-            cand.comment.unwrap_or("")
-        );
-    }
-}
-
-fn print_context(session: &Session) {
-    if let Some(ctx) = session.context() {
-        let comp = ctx.composition();
-        if comp.length > 0 {
-            print_composition(&ctx);
-        } else {
-            println!("(not composing)");
-        }
-        print_menu(&ctx);
-    }
-}
-
-fn print_session(session: &Session) {
-    if let Some(commit) = session.commit() {
-        println!("commit: {}", commit.text());
-    }
-    print_status(session);
-    print_context(session);
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if let Some(packages) = &cli.install {
         return install_cmd(packages);
+    }
+
+    if cli.list_schemas {
+        return list_schemas_cmd();
+    }
+
+    if cli.current_schema {
+        let _traits = init_rime()?;
+        let session = create_session()?;
+        let status = session.status()?;
+        println!("{}", status.schema_id());
+        return Ok(());
     }
 
     if let Some(path) = &cli.log {
@@ -327,8 +210,8 @@ fn main() -> Result<()> {
     }
 
     match cli.key_sequence {
-        Some(ref seq) => cli_mode(&session, seq, cli.pick)?,
-        None => interactive_mode(&mut session)?,
+        Some(ref seq) => convert(&session, seq, cli.pick)?,
+        None => bail!("no key sequence provided (run with --help for usage)"),
     }
 
     let _ = session.close();
