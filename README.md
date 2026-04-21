@@ -18,19 +18,17 @@ en | [zh_CN](README.zh_CN.md)
 
 ## Features
 
-- **One-shot mode** — pass a pinyin key sequence as an argument and get Chinese
-  output directly on stdout.
-- **Interactive mode** — read lines from stdin for continuous input.
+- **One-shot conversion** — pass a pinyin key sequence, get Chinese output.
+- Online schema installation via plum (no local plum needed).
+- List / switch input schemas.
 - Candidate display and selection.
-- Schema selection via command-line flag.
-- Supports `reload` and `exit` commands in interactive mode.
 
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) toolchain
 - [vcpkg](https://vcpkg.io/) (with `VCPKG_ROOT` set)
 - C/C++ build toolchain (CMake, a C compiler, etc.)
-- Git (for fetching submodules)
+- Git (for fetching submodules and installing schemas)
 
 ## Building
 
@@ -50,36 +48,47 @@ The build process:
 
 ## Usage
 
-**One-shot mode** — convert a pinyin sequence to Chinese characters:
+**Convert pinyin:**
 
 ```bash
-./target/debug/rsime nihao
+rsime nihao    # outputs: 你好
 ```
-
-**Interactive mode** — read pinyin lines from stdin:
-
-```bash
-./target/debug/rsime
-```
-
-Type `exit` to quit, or `reload` to reinitialize RIME.
 
 **Select a schema:**
 
 ```bash
-./target/debug/rsime -s luna_pinyin_simp
+rsime -s double_pinyin_flypy nihao
+```
+
+**List available schemas:**
+
+```bash
+rsime --list-schemas
+```
+
+**Show current schema:**
+
+```bash
+rsime --current-schema
+```
+
+**Install schemas online (via plum, no local plum needed):**
+
+```bash
+rsime --install               # install preset schemas
+rsime --install double-pinyin  # install a specific package
 ```
 
 **Show candidates for manual selection:**
 
 ```bash
-./target/debug/rsime -p nihao
+rsime -p nihao
 ```
 
 **Write debug log:**
 
 ```bash
-./target/debug/rsime -l /tmp/rsime.log
+rsime -l /tmp/rsime.log nihao
 ```
 
 ### Environment Variables
@@ -87,7 +96,7 @@ Type `exit` to quit, or `reload` to reinitialize RIME.
 | Variable | Description | Default |
 |---|---|---|
 | `RIME_SHARED_DATA_DIR` | Path to RIME shared data directory | `third_party/librime/data/minimal` |
-| `RIME_USER_DATA_DIR` | Path to RIME user data directory | `/tmp/rime-user` |
+| `RIME_USER_DATA_DIR` | Path to RIME user data directory | `~/.config/rsime` |
 
 ## License
 

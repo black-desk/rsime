@@ -12,18 +12,17 @@ SPDX-License-Identifier: MIT
 
 ## 功能
 
-- **单次模式** — 将拼音按键序列作为参数传入，直接在标准输出获得中文结果。
-- **交互模式** — 从标准输入逐行读取，持续进行输入转换。
+- **单次转换** — 传入拼音，直接输出中文。
+- 在线安装输入方案（通过 plum，无需本地安装）。
+- 列出 / 切换输入方案。
 - 候选词显示与选择。
-- 通过命令行参数选择输入方案。
-- 交互模式下支持 `reload` 和 `exit` 命令。
 
 ## 前置条件
 
 - [Rust](https://www.rust-lang.org/tools/install) 工具链
 - [vcpkg](https://vcpkg.io/)（需设置 `VCPKG_ROOT`）
 - C/C++ 构建工具链（CMake、C 编译器等）
-- Git（用于获取子模块）
+- Git（用于获取子模块和安装方案）
 
 ## 构建
 
@@ -42,36 +41,47 @@ make
 
 ## 使用
 
-**单次模式** — 将拼音序列转换为中文：
+**转换拼音：**
 
 ```bash
-./target/debug/rsime nihao
+rsime nihao    # 输出：你好
 ```
-
-**交互模式** — 从标准输入读取拼音行：
-
-```bash
-./target/debug/rsime
-```
-
-输入 `exit` 退出，输入 `reload` 重新初始化 RIME。
 
 **选择输入方案：**
 
 ```bash
-./target/debug/rsime -s luna_pinyin_simp
+rsime -s double_pinyin_flypy nihao
+```
+
+**列出可用方案：**
+
+```bash
+rsime --list-schemas
+```
+
+**查看当前方案：**
+
+```bash
+rsime --current-schema
+```
+
+**在线安装方案（通过 plum，无需本地安装）：**
+
+```bash
+rsime --install               # 安装预设方案
+rsime --install double-pinyin  # 安装指定方案
 ```
 
 **显示候选词以供手动选择：**
 
 ```bash
-./target/debug/rsime -p nihao
+rsime -p nihao
 ```
 
 **写入调试日志：**
 
 ```bash
-./target/debug/rsime -l /tmp/rsime.log
+rsime -l /tmp/rsime.log nihao
 ```
 
 ### 环境变量
@@ -79,7 +89,7 @@ make
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `RIME_SHARED_DATA_DIR` | RIME 共享数据目录路径 | `third_party/librime/data/minimal` |
-| `RIME_USER_DATA_DIR` | RIME 用户数据目录路径 | `/tmp/rime-user` |
+| `RIME_USER_DATA_DIR` | RIME 用户数据目录路径 | `~/.config/rsime` |
 
 ## 许可证
 
