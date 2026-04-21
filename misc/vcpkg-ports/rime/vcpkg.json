@@ -1,0 +1,29 @@
+{
+  "name": "rime",
+  "version-string": "1.15.0",
+  "homepage": "https://github.com/rime/librime",
+  "description": "Rime Input Method Engine, the core library",
+  "license": "BSD-3-Clause",
+  "dependencies": [
+    "boost-any",
+    "boost-cmake",
+    "boost-crc",
+    "boost-dll",
+    "boost-filesystem",
+    "boost-format",
+    "boost-interprocess",
+    "boost-locale",
+    "boost-regex",
+    "boost-scope-exit",
+    "boost-signals2",
+    "boost-uuid",
+    "glog",
+    "leveldb",
+    "lua",
+    "marisa-trie",
+    "opencc",
+    "pkgconf",
+    "vcpkg-cmake",
+    "yaml-cpp"
+  ]
+}

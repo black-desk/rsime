@@ -1,0 +1,69 @@
+From 5a50753ec254bbb0ef471c6a47e84c35b1f8d015 Mon Sep 17 00:00:00 2001
+From: Chen Linxuan <me@black-desk.cn>
+Date: Tue, 9 Dec 2025 23:21:08 +0800
+Subject: [PATCH 1/2] Remove FindIconv.cmake
+
+When building with vcpkg, boost-locale try to check libiconv with
+find_dependency(Iconv), which expected that FindIconv.cmake set
+Iconv_FOUND when it's found, instead of ICONV_FOUND. As the
+FindIconv.cmake file provided by cmake works fine, let's just remove
+this file from librime.
+
+Signed-off-by: Chen Linxuan <me@black-desk.cn>
+---
+ cmake/FindIconv.cmake | 43 -------------------------------------------
+ 1 file changed, 43 deletions(-)
+ delete mode 100644 cmake/FindIconv.cmake
+
+diff --git a/cmake/FindIconv.cmake b/cmake/FindIconv.cmake
+deleted file mode 100644
+index 76f276968344..000000000000
+--- a/cmake/FindIconv.cmake
++++ /dev/null
+@@ -1,43 +0,0 @@
+-# Find iconv library
+-#
+-# Author: Eddy Xu <eddyxu at gmail.com>
+-#
+-# Released under BSD license
+-#
+-#  ICONV_INCLUDE_DIRS   - where to find iconv.h, etc
+-#  ICONV_LIBRARIES      - Lists of libraries when using iconv
+-#  ICONV_FOUND          - True if iconv found
+-
+-
+-# Look for the header file
+-FIND_PATH( ICONV_INCLUDE_DIR NAMES iconv.h )
+-MARK_AS_ADVANCED( ICONV_INCLUDE_DIR )
+-
+-# Look for the library
+-FIND_LIBRARY( ICONV_LIBRARY NAMES iconv )
+-MARK_AS_ADVANCED( ICONV_LIBRARY )
+-
+-# Copy the result to output variables
+-IF(ICONV_INCLUDE_DIR AND ICONV_LIBRARY)
+-  SET(ICONV_FOUND 1)
+-  SET(ICONV_LIBRARIES ${ICONV_LIBRARY})
+-  SET(ICONV_INCLUDE_DIRS ${ICONV_INCLUDE_DIR})
+-ELSE(ICONV_INCLUDE_DIR AND ICONV_LIBRARY)
+-  SET(ICONV_FOUND 0)
+-  SET(ICONV_LIBRARIES)
+-  SET(ICONV_INCLUDE_DIRS)
+-ENDIF(ICONV_INCLUDE_DIR AND ICONV_LIBRARY)
+-
+-# Report results
+-IF(NOT ICONV_FOUND)
+-  SET(ICONV_DIR_MESSAGE
+-    "Iconv was not found. Make sure ICONV_LIBRARY and ICONV_INCLUDE_DIR are
+-set.")
+-    IF(NOT ICONV_FIND_QUIETLY)
+-      MESSAGE(STATUS ${ICONV_DIR_MESSAGE})
+-    ELSE(NOT ICONV_FIND_QUIETLY)
+-      IF(ICONV_FIND_REQUIRED)
+-        MESSAGE(FETAL_ERROR ${ICONV_DIR_MESSAGE})
+-      ENDIF(ICONV_FIND_REQUIRED)
+-    ENDIF(NOT ICONV_FIND_QUIETLY)
+-ENDIF(NOT ICONV_FOUND)
+-- 
+2.43.0
+
