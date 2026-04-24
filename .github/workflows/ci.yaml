@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Chen Linxuan <me@black-desk.cn>
+# SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
 #
 # SPDX-License-Identifier: MIT
 
@@ -19,56 +19,34 @@ jobs:
     steps:
       - uses: black-desk/workflows/generic@master
 
-  # TODO: Uncomment and configure this job if this is a project using autotools
-  # autotools:
-  #   permissions:
-  #     id-token: write
-  #     contents: write
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - run: |
-  #         # TODO: Install extra dependencies here
-  #         sudo apt update
-  #         sudo apt install -y autoconf automake libtool
-  #     - uses: black-desk/workflows/autotools@master
+  autotools:
+    permissions:
+      id-token: write
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          sudo apt update
+          sudo apt install -y autoconf automake libtool
+      - uses: black-desk/workflows/autotools@master
 
-  # TODO: Uncomment this job if this is a golang project
-  # go:
-  #   permissions:
-  #     id-token: write
-  #     contents: write
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: black-desk/workflows/go@master
-
-  # TODO: Uncomment this job if this is a rust project
-  # rust:
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: write
-  #     id-token: write
-  #   steps:
-  #     - uses: black-desk/workflows/rust@master
-
-  # TODO: Uncomment this job if this is a project with a container
-  # container:
-  #   permissions:
-  #     contents: read
-  #     packages: write
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: black-desk/workflows/container@master
+  rust:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - run: |
+          sudo apt install librime-dev
+      - uses: black-desk/workflows/rust@master
 
   pass:
     name: pass
     if: always()
     needs:
       - generic
-      # TODO: Uncomment the following lines if you have the respective jobs
-      # - autotools
-      # - go
-      # - rust
-      # - container
+      - autotools
+      - rust
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
