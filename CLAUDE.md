@@ -2,32 +2,7 @@
 
 命令行中文输入工具，基于 RIME，面向无图形输入法的 TUI 环境。
 
-## 构建与开发
-
-```bash
-make          # release 构建
-make debug    # debug 构建
-make test     # 运行测试
-make clippy   # lint 检查
-make clean    # 清理构建产物
-make install  # 安装
-```
-
-构建依赖 vcpkg 提供 `rime` 库。`make` 自动调用 `vcpkg install`，需要
-`VCPKG_ROOT` 环境变量已设置。构建通过 `RIME_INCLUDE_DIR` / `RIME_LIB_DIR`
-环境变量指向 vcpkg 安装的头文件和库文件。
-
-## 项目结构
-
-```
-src/main.rs              — 主程序，所有逻辑在单文件中
-tests/stdio.rs           — stdio 模式的集成测试
-third_party/librime-rs/  — fork 的 librime Rust 绑定 (rime-api / librime-sys)
-third_party/librime/     — 作为参考的 librime C++ 源码 (git submodule)
-third_party/plum/        — 作为参考的 rime-plum 方案安装脚本 (git submodule)
-misc/vcpkg-ports/rime/   — 自定义 vcpkg port，构建 librime + 插件
-scripts/ls-todo.sh       — 列出项目中的 TODO/FIME 项
-```
+贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 架构
 
@@ -39,25 +14,34 @@ CLI 使用 `clap` derive 模式定义子命令：
 - `list-schemas` / `current-schema` / `set-schema` — 方案管理
 - `shell-init` — 输出 shell 补全脚本和可选的快捷键绑定
 
+## Neovim 插件
+
+`lua/rsime/` 和 `plugin/rsime.lua` 构成 Neovim 插件。通过 `rsime stdio` 子进程在
+Neovim 中实现中文输入，纯 Lua 实现，无外部依赖。用户通过 `require("rsime").setup{}`
+配置，提供 `:RsimeEnable` / `:RsimeDisable` / `:RsimeToggle` 命令。
+
+## CI/CD
+
+GitHub Actions（`.github/workflows/`）：
+- `ci.yaml` — 目前仅运行 generic lint（rust/cd job 尚未启用）
+- `cd.yaml` — 占位，未配置实际部署
+
+## RIME 交互
+
 RIME 交互通过 `rime-api` crate（fork 的 `third_party/librime-rs`）。按键码使用
 `rime_api::KEY_*` 常量（从 `librime-sys` 的 `RimeKeyCode_XK_*` 重新导出），
 不要使用硬编码数字。
 
 `init_rime()` 中 shared_data_dir 和 user_data_dir **故意设为同一目录**，
 因为本项目通常不依赖系统级 RIME 安装。留空会导致 RIME 回退到当前工作目录。
-
-## 测试
-
-测试通过 `assert_cmd` 以子进程方式运行 `rsime stdio`。`setup_rime_env()` 将
-`~/.config/rsime` 复制到临时目录并设为 `RIME_USER_DATA_DIR`，确保测试有可用的
-输入方案。
-
-运行测试前需要先完成 debug 构建（`make test` 会自动处理）。
+首次运行时若用户数据目录不存在，会自动调用 `install_cmd` 安装预设方案。
 
 ## 注意事项
 
 - `run_tui` 中使用 `libc::dup/dup2` 重定向 stdout 到 `/dev/tty`，以便在 `$()`
   子 shell 中工作时 crossterm 的光标查询能到达终端
 - `install_cmd` 通过 HTTP 下载 plum 脚本并 pipe 给 bash，需要网络和 git
-- 许可证：代码 GPL-3.0-or-later，文档/配置/脚本 MIT。遵循 REUSE 规范
-- commit 风格参考 `git log`：`feat:`, `build(vcpkg):` 等常规前缀
+- Rust edition 2024，`clap` derive 模式，`clap_complete` 生成 shell 补全
+- LLM 运行 git commit 时必须加 `-s`（生成 `Signed-off-by`），并添加
+  `Assisted-by: agent:<模块名>` trailer（如 `Assisted-by: agent:claude`）
+- 当项目结构、架构或构建方式发生变化时，必须同步更新本文件（CLAUDE.md）
