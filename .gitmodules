@@ -15,3 +15,6 @@
 [submodule "third_party/plum"]
 	path = third_party/plum
 	url = https://github.com/rime/plum.git
+[submodule "third_party/librime-sys"]
+	path = third_party/librime-sys
+	url = https://github.com/lotem/librime-sys.git

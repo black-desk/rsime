@@ -36,7 +36,8 @@ GitHub Actions（`.github/workflows/`）：
 
 RIME 交互通过 `rime-api` crate（fork 的 `third_party/librime-rs`）。按键码使用
 `rime_api::KEY_*` 常量（从 `librime-sys` 的 `RimeKeyCode_XK_*` 重新导出），
-不要使用硬编码数字。
+不要使用硬编码数字。`third_party/librime-sys`（来自 lotem）仅作代码参考，
+实际使用的是 `third_party/librime-rs/librime-sys`（本项目 fork）。
 
 `init_rime()` 中 shared_data_dir 和 user_data_dir **故意设为同一目录**，
 因为本项目通常不依赖系统级 RIME 安装。留空会导致 RIME 回退到当前工作目录。
