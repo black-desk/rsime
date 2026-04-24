@@ -12,6 +12,7 @@ SPDX-License-Identifier: MIT
 
 - **交互式 TUI 模式** — 在终端中直接输入拼音并选择候选词。
 - **Stdio 模式** — 适用于编辑器集成（Vim 风格按键输入，JSONL 输出）。
+- **Neovim 插件** — 在 Neovim 中直接输入中文，无需系统级输入法框架。
 - 在线安装输入方案（通过 plum，无需本地安装）。
 - 列出 / 切换输入方案。
 - Shell 补全与快捷键绑定。
@@ -99,6 +100,76 @@ rsime -l /tmp/rsime.log tui
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `RIME_USER_DATA_DIR` | RIME 用户数据目录路径（同时用作共享数据目录） | `~/.config/rsime` |
+
+## Neovim 插件
+
+rsime 自带 Neovim 插件，通过 `rsime stdio` 子进程在 Neovim 中实现中文输入。纯 Lua 实现，无外部依赖。
+
+### 安装
+
+将本仓库加入 Neovim 的 `runtimepath`，或使用插件管理器：
+
+**lazy.nvim：**
+
+```lua
+{
+  "black-desk/rsime",
+  build = "make",
+  opts = {},
+}
+```
+
+**手动：**
+
+```bash
+# 构建完成后，在 init.lua 中添加：
+vim.opt.rtp:prepend("/path/to/rsime")
+require("rsime").setup{}
+```
+
+### 配置
+
+```lua
+require("rsime").setup{
+  -- rsime 二进制路径（默认从 PATH 查找）
+  bin = "rsime",
+
+  -- RIME 用户数据目录（默认使用 rsime 自身默认值 ~/.config/rsime）
+  rime_user_data_dir = nil,
+}
+```
+
+### 命令
+
+| 命令 | 说明 |
+|---|---|
+| `:RsimeEnable` | 在当前 buffer 激活中文输入 |
+| `:RsimeDisable` | 停用当前 buffer 的中文输入 |
+| `:RsimeToggle` | 切换激活/停用状态 |
+
+### 快捷键配置示例
+
+将 `<Alt-i>` 映射为切换 rsime，在普通模式下同时进入插入模式：
+
+```lua
+vim.keymap.set({ "n", "i" }, "<M-i>", function()
+  require("rsime").toggle()
+  if vim.fn.mode() == "n" then
+    vim.cmd("startinsert")
+  end
+end, { desc = "Toggle rsime" })
+```
+
+### 使用方式
+
+1. 执行 `:RsimeEnable`，进入插入模式
+2. 输入拼音，候选窗会以浮动窗口形式显示
+3. 用数字键 `1`-`9`、`0` 选择候选词
+4. `<Space>` 或 `<CR>` 确认首选词
+5. `<Esc>` 取消当前组合
+6. `<Up>`/`<Down>` 在候选列表中移动
+
+非组合状态下，所有按键正常工作，不影响英文输入。
 
 ## 许可证
 
