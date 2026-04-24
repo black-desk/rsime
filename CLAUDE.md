@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
+
+SPDX-License-Identifier: MIT
+-->
+
 # rsime
 
 命令行中文输入工具，基于 RIME，面向无图形输入法的 TUI 环境。
@@ -16,7 +22,7 @@ CLI 使用 `clap` derive 模式定义子命令：
 
 ## Neovim 插件
 
-`lua/rsime/` 和 `plugin/rsime.lua` 构成 Neovim 插件。通过 `rsime stdio` 子进程在
+`misc/rsime.nvim/` 构成 Neovim 插件（`lua/rsime/` 和 `plugin/rsime.lua`）。通过 `rsime stdio` 子进程在
 Neovim 中实现中文输入，纯 Lua 实现，无外部依赖。用户通过 `require("rsime").setup{}`
 配置，提供 `:RsimeEnable` / `:RsimeDisable` / `:RsimeToggle` 命令。
 

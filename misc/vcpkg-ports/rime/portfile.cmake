@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
+#
+# SPDX-License-Identifier: MIT
+
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH
   REPO            rime/librime
