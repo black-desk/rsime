@@ -29,7 +29,7 @@ SPDX-License-Identifier: MIT
 使用 `--recurse-submodules` 克隆仓库，然后用 `make` 构建：
 
 ```bash
-git clone --recurse-submodules https://github.com/black-desk/rsime.git
+git clone https://github.com/black-desk/rsime.git
 cd rsime
 make
 ```
@@ -46,14 +46,6 @@ make
 ```bash
 rsime tui
 ```
-
-**Stdio 模式（编辑器集成）：**
-
-```bash
-rsime stdio
-```
-
-接受 Vim 风格的按键表示法（如 `<CR>`、`<Space>`、`<Esc>`、`<BS>`、`<Up>`、`<Down>` 等），每行一个按键，输出 JSONL 格式的响应。
 
 **安装输入方案（通过 plum，无需本地安装）：**
 
@@ -107,33 +99,40 @@ rsime 自带 Neovim 插件，通过 `rsime stdio` 子进程在 Neovim 中实现�
 
 ### 安装
 
-将本仓库加入 Neovim 的 `runtimepath`，或使用插件管理器：
+Neovim 插件位于 `misc/rsime.nvim/`，仓库根目录通过符号链接（`lua/`、`plugin/`）指向该子目录，因此插件管理器可直接使用。使用前需自行编译安装 `rsime` 二进制，构建方法参见上方的「构建」章节。
 
 **lazy.nvim：**
 
 ```lua
 {
   "black-desk/rsime",
-  build = "make",
+  cond = function()
+    return vim.fn.executable("rsime") == 1
+  end,
+  keys = {
+    {
+      "<M-i>",
+      function()
+        require("rsime").toggle()
+        if vim.fn.mode() == "n" then
+          vim.cmd("startinsert")
+        end
+      end,
+      mode = { "n", "i" },
+      desc = "Toggle rsime",
+    },
+  },
   opts = {},
 }
-```
-
-**手动：**
-
-```bash
-# 构建完成后，在 init.lua 中添加：
-vim.opt.rtp:prepend("/path/to/rsime")
-require("rsime").setup{}
 ```
 
 ### 配置
 
 ```lua
+-- 在 opts 中传入，或直接调用：
 require("rsime").setup{
   -- rsime 二进制路径（默认从 PATH 查找）
   bin = "rsime",
-
   -- RIME 用户数据目录（默认使用 rsime 自身默认值 ~/.config/rsime）
   rime_user_data_dir = nil,
 }
@@ -146,19 +145,6 @@ require("rsime").setup{
 | `:RsimeEnable` | 在当前 buffer 激活中文输入 |
 | `:RsimeDisable` | 停用当前 buffer 的中文输入 |
 | `:RsimeToggle` | 切换激活/停用状态 |
-
-### 快捷键配置示例
-
-将 `<Alt-i>` 映射为切换 rsime，在普通模式下同时进入插入模式：
-
-```lua
-vim.keymap.set({ "n", "i" }, "<M-i>", function()
-  require("rsime").toggle()
-  if vim.fn.mode() == "n" then
-    vim.cmd("startinsert")
-  end
-end, { desc = "Toggle rsime" })
-```
 
 ### 使用方式
 
