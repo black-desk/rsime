@@ -136,6 +136,12 @@ end
 local function handle_char()
   local ch = vim.v.char
   log("handle_char: vim.v.char=%s", vim.inspect(ch))
+  -- Space is a printable character that also appears in special_keys.
+  -- When the <Space> keymap returns "<Space>" (non-composing), Neovim
+  -- inserts a space which re-triggers InsertCharPre.  If we swallow it
+  -- here rsime/RIME may not commit it back, so the space is lost.
+  -- During composing, space is handled by the keymap, never by us.
+  if ch == " " then return end
   send_key(ch)
   vim.v.char = ""
 end
