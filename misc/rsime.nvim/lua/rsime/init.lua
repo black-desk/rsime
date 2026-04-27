@@ -142,6 +142,15 @@ local function handle_char()
   -- here rsime/RIME may not commit it back, so the space is lost.
   -- During composing, space is handled by the keymap, never by us.
   if ch == " " then return end
+  if ch == "1" then return end
+  if ch == "2" then return end
+  if ch == "3" then return end
+  if ch == "4" then return end
+  if ch == "5" then return end
+  if ch == "6" then return end
+  if ch == "7" then return end
+  if ch == "8" then return end
+  if ch == "9" then return end
   send_key(ch)
   vim.v.char = ""
 end
