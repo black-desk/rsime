@@ -12,3 +12,6 @@
 [submodule "third_party/librime-sys"]
 	path = third_party/librime-sys
 	url = https://github.com/lotem/librime-sys.git
+[submodule "third_party/librime"]
+	path = third_party/librime
+	url = https://github.com/rime/librime.git
