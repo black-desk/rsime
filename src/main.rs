@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod rime;
+
 use std::fs::{self, File};
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
@@ -17,7 +19,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::widgets::Paragraph;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
-use rime_api::{
+use rime::{
     create_session, deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
     KEY_BACKSPACE, KEY_DELETE, KEY_DOWN, KEY_END, KEY_ESCAPE, KEY_HOME, KEY_LEFT, KEY_PAGEDOWN,
@@ -334,7 +336,7 @@ fn run_stdio(session: &Session) -> Result<()> {
             // 组合状态下按 Esc：交给 RIME 处理（取消组合）
         }
 
-        session.process_key(rime_api::KeyEvent {
+        session.process_key(rime::KeyEvent {
             key_code,
             modifiers: 0,
         });
@@ -496,10 +498,10 @@ fn tui_loop(
                     KeyCode::Esc => break,
                     KeyCode::Enter if preedit.is_empty() => break,
                     KeyCode::Enter => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_RETURN as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_RETURN as i32, modifiers: 0 });
                     }
                     KeyCode::Backspace if !preedit.is_empty() => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_BACKSPACE as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_BACKSPACE as i32, modifiers: 0 });
                     }
                     KeyCode::Backspace if *cursor > 0 => {
                         let byte_pos = output
@@ -535,19 +537,19 @@ fn tui_loop(
                         *cursor += 1;
                     }
                     KeyCode::Char(c) => {
-                        session.process_key(rime_api::KeyEvent { key_code: c as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: c as i32, modifiers: 0 });
                     }
                     KeyCode::Up => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_UP as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_UP as i32, modifiers: 0 });
                     }
                     KeyCode::Down | KeyCode::Tab => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_DOWN as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_DOWN as i32, modifiers: 0 });
                     }
                     KeyCode::PageUp => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_PAGEUP as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_PAGEUP as i32, modifiers: 0 });
                     }
                     KeyCode::PageDown => {
-                        session.process_key(rime_api::KeyEvent { key_code: KEY_PAGEDOWN as i32, modifiers: 0 });
+                        session.process_key(rime::KeyEvent { key_code: KEY_PAGEDOWN as i32, modifiers: 0 });
                     }
                     _ => {}
                 }

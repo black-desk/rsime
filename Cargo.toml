@@ -14,14 +14,10 @@ clap_complete = "4"
 crossterm = { version = "0.29", features = ["use-dev-tty"] }
 libc = "0.2"
 ratatui = "0.30"
-rime-api = "0.12"
+librime-sys = { path = "./librime-sys" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = "3"
-
-[patch.crates-io]
-librime-sys = { path = "./third_party/librime-rs/librime-sys" }
-rime-api = { path = "./third_party/librime-rs" }
 
 [dev-dependencies]
 assert_cmd = "2"

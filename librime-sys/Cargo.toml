@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
+#
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "librime-sys"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+bindgen = "0.71"
+pkg-config = "0.3"
