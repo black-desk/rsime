@@ -33,14 +33,44 @@ jobs:
       - uses: black-desk/workflows/autotools@master
 
   rust:
+    name: rust (system librime)
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
     steps:
       - run: |
-          sudo apt install librime-dev
+          sudo apt update
+          sudo apt install -y librime-dev
       - uses: black-desk/workflows/rust@master
+
+  rust-vcpkg:
+    name: rust (vcpkg static librime)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bootstrap vcpkg
+        uses: johnwason/vcpkg-action@v7
+        with:
+          manifest-dir: ${{ github.workspace }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and test
+        shell: bash
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/vcpkg_installed/x64-linux/lib/pkgconfig
+        run: |
+          cargo test --workspace
 
   pass:
     name: pass
@@ -49,6 +79,7 @@ jobs:
       - generic
       - autotools
       - rust
+      - rust-vcpkg
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
