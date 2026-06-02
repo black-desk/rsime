@@ -22,15 +22,27 @@ jobs:
           CLEAN_IGNORE: misc/vcpkg-ports/**/*.patch
 
   autotools:
+    name: make (vcpkg static librime)
     permissions:
       id-token: write
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          sudo apt update
-          sudo apt install -y autoconf automake libtool
-      - uses: black-desk/workflows/autotools@master
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Build and test with coverage
+        run: make cov
+
+      - uses: black-desk/workflows/codecov@master
 
   rust:
     name: rust (system librime)
