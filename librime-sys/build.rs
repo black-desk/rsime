@@ -7,11 +7,16 @@ use std::path::PathBuf;
 
 fn main() {
     let mut include_dirs: Vec<String> = Vec::new();
+    let mut is_static = false;
 
     // Try pkg-config first
     if pkg_config::probe_library("rime").is_ok() {
         if let Ok(lib) = pkg_config::Config::new().probe("rime") {
             include_dirs = lib.include_paths.iter().map(|p| p.to_string_lossy().into()).collect();
+            // Check if linking against a static library
+            is_static = lib.link_paths.iter().any(|dir| {
+                dir.join("librime.a").exists() || dir.join("librime-static.a").exists()
+            });
         }
     }
 
@@ -24,7 +29,36 @@ fn main() {
         println!("cargo:rustc-link-search={lib_dir}");
         println!("cargo:rustc-link-lib=rime");
 
+        is_static = PathBuf::from(&lib_dir).join("librime.a").exists();
+
         include_dirs.push(include_dir);
+    }
+
+    // Static librime needs C++ standard library and all transitive dependencies.
+    // vcpkg's rime.pc doesn't declare Requires, so we list them explicitly.
+    if is_static {
+        println!("cargo:rustc-link-lib=rime");
+        for dep in &[
+            "boost_filesystem",
+            "boost_locale",
+            "boost_thread",
+            "boost_chrono",
+            "boost_atomic",
+            "boost_container",
+            "boost_date_time",
+            "boost_charconv",
+            "darts",
+            "glog",
+            "gflags",
+            "leveldb",
+            "lua",
+            "marisa",
+            "opencc",
+            "yaml-cpp",
+        ] {
+            println!("cargo:rustc-link-lib=static={dep}");
+        }
+        println!("cargo:rustc-link-lib=stdc++");
     }
 
     let mut builder = bindgen::Builder::default()
