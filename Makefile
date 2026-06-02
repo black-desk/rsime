@@ -12,10 +12,10 @@ ifeq ($(VCPKG_TRIPLET_DIR),)
 
 release debug test clippy check install: vcpkg
 	$(MAKE) $@
+
 else
 
-export RIME_INCLUDE_DIR := $(CURDIR)/$(VCPKG_TRIPLET_DIR)/include
-export RIME_LIB_DIR     := $(CURDIR)/$(VCPKG_TRIPLET_DIR)/lib
+export PKG_CONFIG_PATH := $(CURDIR)/$(VCPKG_TRIPLET_DIR)/lib/pkgconfig:$(PKG_CONFIG_PATH)
 
 release debug:
 	cargo build $(if $(filter release,$@),--release)
