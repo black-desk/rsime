@@ -1,4 +1,7 @@
-// Derived from X11/keysym.h
+// SPDX-FileCopyrightText: 2023 Zhai Can <czhai@envs.net>
+// SPDX-FileCopyrightText: 1987, 1998 The Open Group
+// SPDX-License-Identifier: MIT
+// Derived from X11/keysymdef.h (librime bundle)
 
 #ifndef RIME_DERIVED_H
 #define RIME_DERIVED_H
