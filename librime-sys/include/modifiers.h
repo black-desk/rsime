@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: RIME Developers
+// SPDX-License-Identifier: BSD-3-Clause
 // From librime `key_table.h` at 08dd95f5d92 (tag v1.8.5)
 
 #ifndef RIME_API_SYS_MODIFIERS_H
