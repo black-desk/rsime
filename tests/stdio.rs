@@ -2,29 +2,14 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::Path;
-use std::process::Command;
-
 use serde_json::Value;
 
-/// Copy existing RIME user data to temp dir so tests have schemas.
+/// Set up a temp HOME so rsime's init_rime() will auto-install schemas.
 fn setup_rime_env() -> (tempfile::TempDir, assert_cmd::Command) {
     let temp_dir = tempfile::tempdir().unwrap();
 
-    // Copy existing user data (schemas) into the temp dir
-    let home = std::env::var("HOME").unwrap();
-    let src = Path::new(&home).join(".config/rsime");
-    if src.exists() {
-        let status = Command::new("cp")
-            .args(["-r", &format!("{}/.", src.display())])
-            .arg(temp_dir.path())
-            .status()
-            .unwrap();
-        assert!(status.success(), "failed to copy rime user data");
-    }
-
     let mut cmd = assert_cmd::Command::cargo_bin("rsime").unwrap();
-    cmd.env("RIME_USER_DATA_DIR", temp_dir.path());
+    cmd.env("HOME", temp_dir.path());
     cmd.arg("stdio");
 
     (temp_dir, cmd)
