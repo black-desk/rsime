@@ -172,6 +172,7 @@ fn install_cmd(packages: &[String]) -> Result<()> {
         .env("rime_dir", &rime_dir)
         .env("plum_dir", &plum_dir)
         .env("no_update", "1")
+        .stdout(std::process::Stdio::null())
         .arg("-s")
         .arg("--")
         .args(&targets)
