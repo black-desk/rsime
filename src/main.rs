@@ -5,6 +5,7 @@
 mod rime;
 
 use std::fs::{self, File};
+use std::os::fd::FromRawFd;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
@@ -172,7 +173,10 @@ fn install_cmd(packages: &[String]) -> Result<()> {
         .env("rime_dir", &rime_dir)
         .env("plum_dir", &plum_dir)
         .env("no_update", "1")
-        .stdout(std::process::Stdio::null())
+        .stdout(unsafe {
+            let fd = libc::dup(libc::STDERR_FILENO);
+            std::process::Stdio::from(std::os::fd::OwnedFd::from_raw_fd(fd))
+        })
         .arg("-s")
         .arg("--")
         .args(&targets)
