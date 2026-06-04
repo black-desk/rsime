@@ -341,10 +341,7 @@ fn run_stdio(session: &Session) -> Result<()> {
             // 组合状态下按 Esc：交给 RIME 处理（取消组合）
         }
 
-        session.process_key(rsime::rime::KeyEvent {
-            key_code,
-            modifiers: 0,
-        });
+        session.process_key(rsime::rime::KeyEvent::new(key_code));
 
         let mut commit = String::new();
         while let Some(c) = session.commit() {
@@ -355,13 +352,13 @@ fn run_stdio(session: &Session) -> Result<()> {
             Some(ctx) => {
                 let comp = ctx.composition();
                 let menu = ctx.menu();
-                let preedit = comp.preedit.unwrap_or("").to_string();
+                let preedit = comp.preedit.unwrap_or_default();
                 let cands: Vec<JsonCandidate> = menu
                     .candidates
                     .iter()
                     .map(|c| JsonCandidate {
-                        text: c.text.to_string(),
-                        comment: c.comment.map(String::from),
+                        text: c.text.clone(),
+                        comment: c.comment.clone(),
                     })
                     .collect();
                 (preedit, cands, menu.highlighted_candidate_index)
@@ -443,7 +440,7 @@ fn tui_loop(
             Some(ctx) => {
                 let comp = ctx.composition();
                 let menu = ctx.menu();
-                let preedit = comp.preedit.unwrap_or("").to_string();
+                let preedit = comp.preedit.unwrap_or_default();
                 let cands: Vec<String> = menu
                     .candidates
                     .iter()
@@ -503,10 +500,10 @@ fn tui_loop(
                     KeyCode::Esc => break,
                     KeyCode::Enter if preedit.is_empty() => break,
                     KeyCode::Enter => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_RETURN as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_RETURN as i32));
                     }
                     KeyCode::Backspace if !preedit.is_empty() => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_BACKSPACE as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_BACKSPACE as i32));
                     }
                     KeyCode::Backspace if *cursor > 0 => {
                         let byte_pos = output
@@ -542,19 +539,19 @@ fn tui_loop(
                         *cursor += 1;
                     }
                     KeyCode::Char(c) => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: c as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(c as i32));
                     }
                     KeyCode::Up => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_UP as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
                     }
                     KeyCode::Down | KeyCode::Tab => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_DOWN as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_DOWN as i32));
                     }
                     KeyCode::PageUp => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_PAGEUP as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEUP as i32));
                     }
                     KeyCode::PageDown => {
-                        session.process_key(rsime::rime::KeyEvent { key_code: KEY_PAGEDOWN as i32, modifiers: 0 });
+                        session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEDOWN as i32));
                     }
                     _ => {}
                 }
