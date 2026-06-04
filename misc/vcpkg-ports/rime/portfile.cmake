@@ -8,7 +8,8 @@ vcpkg_from_github(
   REF             1.15.0
   SHA512          9f808cc8dfe462a9076b2feb01acbd18505f23438757bd7f2efca9226c8115ce5c5852a70cae0abe85ecaea2a11b4944c8d4a1c06965af4bed5cd0274a07c369
   PATCHES         0001-Remove-FindIconv.cmake.patch
-                 0001-static-lib-plugin-deps.patch)
+                 0001-static-lib-plugin-deps.patch
+                 0001-pc-declare-static-deps.patch)
 
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH_LUA

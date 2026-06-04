@@ -34,30 +34,9 @@ fn main() {
         include_dirs.push(include_dir);
     }
 
-    // Static librime needs C++ standard library and all transitive dependencies.
-    // vcpkg's rime.pc doesn't declare Requires, so we list them explicitly.
+    // Static librime needs C++ standard library.
+    // Transitive dependencies are declared in rime.pc (Libs/Libs.private).
     if is_static {
-        println!("cargo:rustc-link-lib=rime");
-        for dep in &[
-            "boost_filesystem",
-            "boost_locale",
-            "boost_thread",
-            "boost_chrono",
-            "boost_atomic",
-            "boost_container",
-            "boost_date_time",
-            "boost_charconv",
-            "darts",
-            "glog",
-            "gflags",
-            "leveldb",
-            "lua",
-            "marisa",
-            "opencc",
-            "yaml-cpp",
-        ] {
-            println!("cargo:rustc-link-lib=static={dep}");
-        }
         println!("cargo:rustc-link-lib=stdc++");
     }
 
