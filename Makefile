@@ -27,7 +27,7 @@ cov:
 	cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
 install:
-	cargo install --path .
+	cargo install --path rsime
 
 endif
 
