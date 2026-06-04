@@ -42,12 +42,11 @@ make install  # 安装
 
 ```
 src/main.rs              — 主程序，所有逻辑在单文件中 (~600 行)
+src/rime.rs              — RIME 交互封装
 tests/stdio.rs           — stdio 模式的集成测试
+librime-sys/             — 本地 librime-sys crate (bindgen + pkg-config)
 lua/rsime/               — Neovim 插件 Lua 源码 (init.lua, ui.lua)
 plugin/rsime.lua         — Neovim 插件入口 (Vim 自动加载)
-third_party/librime-rs/  — fork 的 librime Rust 绑定 (rime-api / librime-sys)
-third_party/librime/     — 作为参考的 librime C++ 源码 (git submodule)
-third_party/plum/        — 作为参考的 rime-plum 方案安装脚本 (git submodule)
 misc/vcpkg-ports/rime/   — 自定义 vcpkg port，构建 librime + 插件
 .format/                 — editorconfig / prettierrc (根目录 symlink 引用)
 scripts/ls-todo.sh       — 列出项目中的 TODO/FIXME 项

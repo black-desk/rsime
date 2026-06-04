@@ -29,15 +29,19 @@ Neovim 中实现中文输入，纯 Lua 实现，无外部依赖。用户通过 `
 ## CI/CD
 
 GitHub Actions（`.github/workflows/`）：
-- `ci.yaml` — 目前仅运行 generic lint（rust/cd job 尚未启用）
+- `ci.yaml` — generic lint、vcpkg 静态构建+覆盖率、系统 librime 构建
 - `cd.yaml` — 占位，未配置实际部署
 
 ## RIME 交互
 
-RIME 交互通过 `rime-api` crate（fork 的 `third_party/librime-rs`）。按键码使用
-`rime_api::KEY_*` 常量（从 `librime-sys` 的 `RimeKeyCode_XK_*` 重新导出），
-不要使用硬编码数字。`third_party/librime-sys`（来自 lotem）仅作代码参考，
-实际使用的是 `third_party/librime-rs/librime-sys`（本项目 fork）。
+RIME 交互通过本地 `librime-sys` crate（`librime-sys/`）。使用 `bindgen` 从
+`librime.h` 生成 FFI 绑定，通过 `pkg-config` 查找 librime（vcpkg 静态库或
+系统动态库）。按键码使用 `rime_api::KEY_*` 常量（从 `librime-sys` 的
+`RimeKeyCode_XK_*` 重新导出），不要使用硬编码数字。
+
+静态链接时的传递依赖通过 vcpkg overlay port 的补丁声明在 `rime.pc` 的
+`Libs.private` 中，`build.rs` 仅额外处理平台相关的 C++ 运行时
+（Linux: `-lstdc++`，macOS: `-lc++`）。
 
 `init_rime()` 中 shared_data_dir 和 user_data_dir **故意设为同一目录**，
 因为本项目通常不依赖系统级 RIME 安装。留空会导致 RIME 回退到当前工作目录。

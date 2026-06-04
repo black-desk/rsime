@@ -5,6 +5,3 @@
 [submodule ".format"]
 	path = .format
 	url = https://github.com/black-desk/.format
-[submodule "third_party/librime"]
-	path = third_party/librime
-	url = https://github.com/rime/librime.git
