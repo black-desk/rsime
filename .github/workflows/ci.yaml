@@ -39,6 +39,11 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Pre-download lua for vcpkg
+        run: |
+          mkdir -p /usr/local/share/vcpkg/downloads
+          wget -O /usr/local/share/vcpkg/downloads/lua-5.4.8.tar.gz https://ftp2.osuosl.org/pub/blfs/conglomeration/lua/lua-5.4.8.tar.gz
+
       - name: Build and test with coverage
         run: make cov
 
