@@ -7,16 +7,16 @@ vcpkg_from_github(
   REPO            rime/librime
   REF             1.15.0
   SHA512          9f808cc8dfe462a9076b2feb01acbd18505f23438757bd7f2efca9226c8115ce5c5852a70cae0abe85ecaea2a11b4944c8d4a1c06965af4bed5cd0274a07c369
-  PATCHES         0001-Remove-FindIconv.cmake.patch
-                 0001-static-lib-plugin-deps.patch
-                 0001-pc-declare-static-deps.patch)
+  PATCHES         patches/librime/0001-Remove-FindIconv.cmake.patch
+                  patches/librime/0002-static-lib-plugin-deps.patch
+                  patches/librime/0003-pc-declare-static-deps.patch)
 
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH_LUA
   REPO            hchunhui/librime-lua
   REF             68f9c364a2d25a04c7d4794981d7c796b05ab627
   SHA512          61702104890f7d5fa97e6cf05a6935e87c584efc855caac4c4611c939a97868b57909c59cd7b634800a124171ef6037bfffa860125c6f7cc1258f520ed583dcb
-  PATCHES         0001-Find-lua-with-cmake.patch)
+  PATCHES         patches/librime-lua/0001-Find-lua-with-cmake.patch)
 
 file(REMOVE_RECURSE "${SOURCE_PATH}/plugins/librime-lua")
 file(RENAME "${SOURCE_PATH_LUA}" "${SOURCE_PATH}/plugins/librime-lua")
