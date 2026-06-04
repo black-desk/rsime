@@ -12,13 +12,13 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::null_mut;
 use std::sync::{LazyLock, Mutex};
 
-use librime_sys::{
+use rime_sys::{
     rime_get_api, rime_struct, RimeApi, RimeCommit, RimeContext,
     RimeSchemaList, RimeSessionId, RimeStatus,
 };
 
 // Re-export commonly used keycodes
-pub use librime_sys::{
+pub use rime_sys::{
     RimeKeyCode_XK_BackSpace as KEY_BACKSPACE, RimeKeyCode_XK_Delete as KEY_DELETE,
     RimeKeyCode_XK_Down as KEY_DOWN, RimeKeyCode_XK_End as KEY_END,
     RimeKeyCode_XK_Escape as KEY_ESCAPE, RimeKeyCode_XK_Home as KEY_HOME,
@@ -62,7 +62,7 @@ macro_rules! rime_api_call {
 // --- Traits ---
 
 pub struct Traits {
-    inner: librime_sys::RimeTraits,
+    inner: rime_sys::RimeTraits,
     resources: Vec<*mut c_char>,
 }
 
@@ -86,7 +86,7 @@ setter_fn_impl!(app_name, set_app_name);
 
 impl Traits {
     pub fn new() -> Self {
-        rime_struct!(rime_traits: librime_sys::RimeTraits);
+        rime_struct!(rime_traits: rime_sys::RimeTraits);
         Self {
             inner: rime_traits,
             resources: Vec::new(),

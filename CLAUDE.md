@@ -34,9 +34,9 @@ GitHub Actions（`.github/workflows/`）：
 
 ## RIME 交互
 
-RIME 交互通过本地 `librime-sys` crate（`librime-sys/`）。使用 `bindgen` 从
+RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 `librime.h` 生成 FFI 绑定，通过 `pkg-config` 查找 librime（vcpkg 静态库或
-系统动态库）。按键码使用 `rime_api::KEY_*` 常量（从 `librime-sys` 的
+系统动态库）。按键码使用 `rime_api::KEY_*` 常量（从 `rime-sys` 的
 `RimeKeyCode_XK_*` 重新导出），不要使用硬编码数字。
 
 静态链接时的传递依赖通过 vcpkg overlay port 的补丁声明在 `rime.pc` 的

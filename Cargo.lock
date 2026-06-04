@@ -833,14 +833,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "librime-sys"
-version = "0.1.0"
-dependencies = [
- "bindgen",
- "pkg-config",
-]
-
-[[package]]
 name = "line-clipping"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1371,6 +1363,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
+name = "rime-sys"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "pkg-config",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1394,8 +1394,8 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "libc",
- "librime-sys",
  "ratatui",
+ "rime-sys",
  "serde",
  "serde_json",
  "tempfile",

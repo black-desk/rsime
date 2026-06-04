@@ -41,10 +41,10 @@ make install  # 安装
 ## 项目结构
 
 ```
-src/main.rs              — 主程序，所有逻辑在单文件中 (~600 行)
-src/rime.rs              — RIME 交互封装
-tests/stdio.rs           — stdio 模式的集成测试
-librime-sys/             — 本地 librime-sys crate (bindgen + pkg-config)
+rsime/src/main.rs        — 主程序，所有逻辑在单文件中 (~600 行)
+rsime/src/rime.rs        — RIME 交互封装
+rsime/tests/stdio.rs     — stdio 模式的集成测试
+rime-sys/                — 本地 rime-sys crate (bindgen + pkg-config)
 lua/rsime/               — Neovim 插件 Lua 源码 (init.lua, ui.lua)
 plugin/rsime.lua         — Neovim 插件入口 (Vim 自动加载)
 misc/vcpkg-ports/rime/   — 自定义 vcpkg port，构建 librime + 插件
