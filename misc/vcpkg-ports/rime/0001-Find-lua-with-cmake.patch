@@ -1,19 +1,9 @@
-From 1129e5bd6d0f6d946320065e08008f4c4c363c41 Mon Sep 17 00:00:00 2001
-From: Chen Linxuan <me@black-desk.cn>
-Date: Sun, 14 Dec 2025 01:30:12 +0800
-Subject: [PATCH] Find lua with cmake
-
-Signed-off-by: Chen Linxuan <me@black-desk.cn>
----
- CMakeLists.txt | 40 +++-------------------------------------
- 1 file changed, 3 insertions(+), 37 deletions(-)
-
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 42f2ebba6468..2b5ac830282b 100644
+index 42f2ebba6468..3007ede358e7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,40 +1,6 @@
- set(LUA_VERSION "lua" CACHE STRING "lua version")
+-set(LUA_VERSION "lua" CACHE STRING "lua version")
 -if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/lua5.4/lua.h")
 -  find_package(PkgConfig)
 -  if(PkgConfig_FOUND)
@@ -51,6 +41,7 @@ index 42f2ebba6468..2b5ac830282b 100644
 -  endif()
 -endif()
 +find_package(Lua REQUIRED)
++set_target_properties(lua PROPERTIES IMPORTED_GLOBAL TRUE)
 +include_directories(${LUA_INCLUDE_DIR})
  
  aux_source_directory(src RIME_LUA_SRC)
@@ -60,8 +51,5 @@ index 42f2ebba6468..2b5ac830282b 100644
  set(plugin_name "rime-lua" PARENT_SCOPE)
  set(plugin_objs $<TARGET_OBJECTS:rime-lua-objs> PARENT_SCOPE)
 -set(plugin_deps ${LUA_TARGET} ${rime_library} ${rime_gears_library} PARENT_SCOPE)
-+set(plugin_deps ${Lua_LIBRARIES} ${rime_library} ${rime_gears_library} PARENT_SCOPE)
++set(plugin_deps ${LUA_LIBRARIES} ${rime_library} ${rime_gears_library} PARENT_SCOPE)
  set(plugin_modules "lua" PARENT_SCOPE)
--- 
-2.39.5 (Apple Git-154)
-
