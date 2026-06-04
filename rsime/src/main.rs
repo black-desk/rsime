@@ -345,7 +345,7 @@ fn run_stdio(session: &Session) -> Result<()> {
 
         let mut commit = String::new();
         while let Some(c) = session.commit() {
-            commit.push_str(c.text());
+            commit.push_str(&c.text());
         }
 
         let (preedit, candidates, highlighted) = match session.context() {
@@ -457,7 +457,7 @@ fn tui_loop(
 
         let mut committed = String::new();
         while let Some(commit) = session.commit() {
-            committed.push_str(commit.text());
+            committed.push_str(&commit.text());
         }
         if !committed.is_empty() {
             let byte_pos = output
