@@ -37,7 +37,11 @@ fn main() {
     // Static librime needs C++ standard library.
     // Transitive dependencies are declared in rime.pc (Libs/Libs.private).
     if is_static {
-        println!("cargo:rustc-link-lib=stdc++");
+        if cfg!(target_os = "macos") {
+            println!("cargo:rustc-link-lib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=stdc++");
+        }
     }
 
     let mut builder = bindgen::Builder::default()

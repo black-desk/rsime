@@ -61,6 +61,16 @@ jobs:
           sudo apt install -y librime-dev
       - uses: black-desk/workflows/rust@master
 
+  macos:
+    name: rust (macOS system librime)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - run: brew install librime pkg-config
+      - uses: black-desk/workflows/rust@master
+
   pass:
     name: pass
     if: always()
@@ -68,6 +78,7 @@ jobs:
       - generic
       - autotools
       - rust
+      - macos
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
