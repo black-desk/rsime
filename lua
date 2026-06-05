@@ -1,1 +1,1 @@
-./misc/rsime.nvim/lua
+rsime.nvim/lua
