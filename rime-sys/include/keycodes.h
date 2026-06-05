@@ -2,6 +2,11 @@
 // SPDX-FileCopyrightText: 1987, 1998 The Open Group
 // SPDX-License-Identifier: MIT
 // Derived from X11/keysymdef.h (librime bundle)
+//
+// Differences from the original keysymdef.h:
+// - Converted from #define macros (hex values) to a typed enum (decimal values).
+// - Removed conditional compilation groups (#ifdef XK_LATIN1 etc.).
+// - Values are identical; only representation changed for bindgen compatibility.
 
 #ifndef RIME_DERIVED_H
 #define RIME_DERIVED_H
