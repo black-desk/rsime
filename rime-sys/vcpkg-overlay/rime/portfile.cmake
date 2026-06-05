@@ -58,7 +58,7 @@ file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 vcpkg_install_copyright(
   FILE_LIST
     "${SOURCE_PATH}/LICENSE"
-    "${SOURCE_PATH_LUA}/LICENSE"
-    "${SOURCE_PATH_OCTAGRAM}/LICENSE"
-    "${SOURCE_PATH_PREDICT}/LICENSE"
+    "${SOURCE_PATH}/plugins/librime-lua/LICENSE"
+    "${SOURCE_PATH}/plugins/librime-octagram/LICENSE"
+    "${SOURCE_PATH}/plugins/librime-predict/LICENSE"
 )
