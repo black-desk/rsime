@@ -19,10 +19,10 @@ jobs:
     steps:
       - uses: black-desk/workflows/generic@master
         env:
-          CLEAN_IGNORE: misc/vcpkg-ports/**/*.patch
+          CLEAN_IGNORE: rime-sys/vcpkg-overlay/**/*.patch
 
   autotools:
-    name: make (vcpkg static librime)
+    name: cargo test (vcpkg bundled librime)
     permissions:
       id-token: write
       contents: write
@@ -44,8 +44,10 @@ jobs:
           mkdir -p /usr/local/share/vcpkg/downloads
           wget -O /usr/local/share/vcpkg/downloads/lua-5.4.8.tar.gz https://ftp2.osuosl.org/pub/blfs/conglomeration/lua/lua-5.4.8.tar.gz
 
-      - name: Build and test with coverage
-        run: make cov
+      - name: Build and test with coverage (bundled-vcpkg)
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+        env:
+          VCPKG_ROOT: /usr/local/share/vcpkg
 
       - uses: black-desk/workflows/codecov@master
 
