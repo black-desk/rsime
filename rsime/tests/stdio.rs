@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![cfg(feature = "cli")]
+
 use serde_json::Value;
 
 /// Set up a temp HOME so rsime's init_rime() will auto-install schemas.

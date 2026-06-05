@@ -30,7 +30,7 @@ jobs:
           - name: linux (system librime)
             os: ubuntu-latest
             setup: sudo apt update && sudo apt install -y librime-dev
-            cargo-flags: --workspace
+            cargo-flags: --all-features --workspace
           - name: linux (bundled-vcpkg)
             os: ubuntu-latest
             setup: ""
@@ -39,7 +39,7 @@ jobs:
           - name: macos (system librime)
             os: macos-latest
             setup: brew install librime pkg-config
-            cargo-flags: --workspace
+            cargo-flags: --all-features --workspace
           - name: macos (bundled-vcpkg)
             os: macos-latest
             setup: ""
