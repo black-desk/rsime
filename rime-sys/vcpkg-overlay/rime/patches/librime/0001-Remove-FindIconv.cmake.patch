@@ -1,18 +1,49 @@
-From 5a50753ec254bbb0ef471c6a47e84c35b1f8d015 Mon Sep 17 00:00:00 2001
+From b6554059b63aaba11f7ec22be972bf41ad8ad075 Mon Sep 17 00:00:00 2001
 From: Chen Linxuan <me@black-desk.cn>
-Date: Tue, 9 Dec 2025 23:21:08 +0800
-Subject: [PATCH 1/2] Remove FindIconv.cmake
+Date: Fri, 5 Jun 2026 16:46:36 +0800
+Subject: [PATCH] build: remove unused FindIconv.cmake and ${ICONV_LIBRARIES}
+ reference
 
-When building with vcpkg, boost-locale try to check libiconv with
-find_dependency(Iconv), which expected that FindIconv.cmake set
-Iconv_FOUND when it's found, instead of ICONV_FOUND. As the
-FindIconv.cmake file provided by cmake works fine, let's just remove
-this file from librime.
+Both the custom FindIconv.cmake module and the ${ICONV_LIBRARIES}
+reference in src/CMakeLists.txt were added in 20cec49e3c70
+("Link to iconv library.", 2016-02-11), alongside a find_package(Iconv)
+call in the main CMakeLists.txt.
 
-Signed-off-by: Chen Linxuan <me@black-desk.cn>
+At that time:
+- charset_filter.cc used boost::locale::conv::from_utf() which
+  depends on iconv through boost-locale.
+- librime requested the boost "locale" component via find_package.
+- Boost had no CMake config files (built with bjam/b2).  CMake's
+  FindBoost.cmake only located boost libraries themselves without
+  handling transitive dependencies like iconv.
+- CMake did not yet provide a built-in FindIconv module (that was
+  added in CMake 3.11, released in 2018), so a custom one was
+  necessary.
+
+The custom FindIconv.cmake set ICONV_FOUND (all caps) and
+ICONV_LIBRARIES, which was fine since only librime consumed it.
+
+In a2241d8bd7ea ("refactor(charset_filter): reduce to basic
+implementation", 2019-12-25), charset_filter was simplified to a
+basic extended-CJK filter using only the utf8 library.  The
+boost::locale usage and the boost "locale" component dependency
+were both removed.  The find_package(Iconv) call in the main
+CMakeLists.txt was also deleted at some point.
+
+However, FindIconv.cmake itself and the ${ICONV_LIBRARIES} reference
+in src/CMakeLists.txt were left behind.  Since the find_package(Iconv)
+call no longer exists, FindIconv.cmake is never loaded and
+${ICONV_LIBRARIES} is always empty.
+
+Worse, the stale module now causes build failures in certain
+environments: newer boost-locale CMake configs call
+find_dependency(Iconv), and CMake picks up this old module from
+CMAKE_MODULE_PATH.  It sets ICONV_FOUND instead of the CMake-standard
+Iconv_FOUND, causing a variable-name mismatch.
 ---
  cmake/FindIconv.cmake | 43 -------------------------------------------
- 1 file changed, 43 deletions(-)
+ src/CMakeLists.txt    |  1 -
+ 2 files changed, 44 deletions(-)
  delete mode 100644 cmake/FindIconv.cmake
 
 diff --git a/cmake/FindIconv.cmake b/cmake/FindIconv.cmake
@@ -64,6 +95,18 @@ index 76f276968344..000000000000
 -      ENDIF(ICONV_FIND_REQUIRED)
 -    ENDIF(NOT ICONV_FIND_QUIETLY)
 -ENDIF(NOT ICONV_FOUND)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 8faa61f89c66..e119ae09c073 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -53,7 +53,6 @@ set(rime_dict_deps
+     ${LevelDb_LIBRARY}
+     ${Marisa_LIBRARY})
+ set(rime_gears_deps
+-    ${ICONV_LIBRARIES}
+     ${ICU_LIBRARIES}
+     ${Opencc_LIBRARY})
+ set(rime_levers_deps "")
 -- 
-2.43.0
+2.53.0
 
