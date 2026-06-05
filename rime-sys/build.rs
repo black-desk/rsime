@@ -13,7 +13,7 @@ fn find_vcpkg_root() -> Result<PathBuf, String> {
     // 1. Check VCPKG_ROOT environment variable
     if let Ok(root) = env::var("VCPKG_ROOT") {
         let path = PathBuf::from(&root);
-        if path.join("vcpkg").exists() || path.join("vcpkg.exe").exists() {
+        if path.join("vcpkg").exists() {
             return Ok(path);
         }
     }
@@ -37,30 +37,19 @@ fn find_vcpkg_root() -> Result<PathBuf, String> {
 fn vcpkg_triplet() -> String {
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-    let env_var = if env::var("CARGO_CFG_TARGET_ENV").unwrap() == "msvc" {
-        "windows"
-    } else {
-        ""
-    };
 
-    match (arch.as_str(), os.as_str(), env_var) {
-        ("x86_64", "linux", _) => "x64-linux".to_string(),
-        ("aarch64", "linux", _) => "arm64-linux".to_string(),
-        ("x86_64", "macos", _) => "x64-osx".to_string(),
-        ("aarch64", "macos", _) => "arm64-osx".to_string(),
-        ("x86_64", "windows", "windows") => "x64-windows-static".to_string(),
-        ("aarch64", "windows", "windows") => "arm64-windows-static".to_string(),
-        _ => format!("unknown triplet: arch={arch}, os={os}"),
+    match (arch.as_str(), os.as_str()) {
+        ("x86_64", "linux") => "x64-linux".to_string(),
+        ("aarch64", "linux") => "arm64-linux".to_string(),
+        ("x86_64", "macos") => "x64-osx".to_string(),
+        ("aarch64", "macos") => "arm64-osx".to_string(),
+        _ => format!("unsupported triplet: arch={arch}, os={os}"),
     }
 }
 
 #[cfg(feature = "bundled-vcpkg")]
 fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path) -> Result<PathBuf, String> {
-    let vcpkg_bin = if vcpkg_root.join("vcpkg").exists() {
-        vcpkg_root.join("vcpkg")
-    } else {
-        vcpkg_root.join("vcpkg.exe")
-    };
+    let vcpkg_bin = vcpkg_root.join("vcpkg");
 
     let triplet = vcpkg_triplet();
 
@@ -87,11 +76,9 @@ fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path) -> Result<PathBuf, 
 }
 
 fn main() {
-    let mut include_dirs: Vec<String> = Vec::new();
-
     // === bundled-vcpkg feature: install librime via vcpkg ===
     #[cfg(feature = "bundled-vcpkg")]
-    let is_static: bool = {
+    {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let vcpkg_root =
             find_vcpkg_root().expect("bundled-vcpkg feature requires vcpkg to be installed");
@@ -109,41 +96,24 @@ fn main() {
             // SAFETY: build.rs is single-threaded; setting an env var here is safe.
             unsafe { env::set_var("PKG_CONFIG_PATH", &new_path); }
         }
-        true
-    };
-
-    #[cfg(not(feature = "bundled-vcpkg"))]
-    let mut is_static: bool = false;
-
-    // Try pkg-config first
-    if pkg_config::probe_library("rime").is_ok() {
-        if let Ok(lib) = pkg_config::Config::new().probe("rime") {
-            include_dirs = lib.include_paths.iter().map(|p| p.to_string_lossy().into()).collect();
-            #[cfg(not(feature = "bundled-vcpkg"))]
-            {
-                is_static = lib.link_paths.iter().any(|dir| {
-                    dir.join("librime.a").exists() || dir.join("librime-static.a").exists()
-                });
-            }
-        }
     }
 
-    // Fallback to environment variables or defaults
-    if include_dirs.is_empty() {
-        let include_dir =
-            env::var("RIME_INCLUDE_DIR").unwrap_or_else(|_| "/usr/include".to_owned());
-        let lib_dir = env::var("RIME_LIB_DIR").unwrap_or_else(|_| "/usr/lib".to_owned());
+    let lib = pkg_config::Config::new()
+        .probe("rime")
+        .expect("Failed to find librime via pkg-config. Is librime installed?");
 
-        println!("cargo:rustc-link-search={lib_dir}");
-        println!("cargo:rustc-link-lib=rime");
+    let include_dirs: Vec<String> = lib.include_paths.iter().map(|p| p.to_string_lossy().into()).collect();
 
+    let is_static = {
+        #[cfg(feature = "bundled-vcpkg")]
+        { true }
         #[cfg(not(feature = "bundled-vcpkg"))]
         {
-            is_static = PathBuf::from(&lib_dir).join("librime.a").exists();
+            lib.link_paths.iter().any(|dir| {
+                dir.join("librime.a").exists() || dir.join("librime-static.a").exists()
+            })
         }
-
-        include_dirs.push(include_dir);
-    }
+    };
 
     // Static librime needs C++ standard library.
     // Transitive dependencies are declared in rime.pc (Libs/Libs.private).
