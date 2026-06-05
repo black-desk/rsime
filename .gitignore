@@ -3,5 +3,4 @@
 # SPDX-License-Identifier: MIT
 
 /target
-/vcpkg_installed
 .vscode
