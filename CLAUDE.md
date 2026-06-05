@@ -29,7 +29,7 @@ Neovim 中实现中文输入，纯 Lua 实现，无外部依赖。用户通过 `
 ## CI/CD
 
 GitHub Actions（`.github/workflows/`）：
-- `ci.yaml` — generic lint、vcpkg 静态构建+覆盖率、系统 librime 构建
+- `ci.yaml` — generic lint、vcpkg bundled-vcpkg 构建+覆盖率、系统 librime 构建
 - `cd.yaml` — 占位，未配置实际部署
 
 ## RIME 交互
@@ -38,6 +38,11 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 `librime.h` 生成 FFI 绑定，通过 `pkg-config` 查找 librime（vcpkg 静态库或
 系统动态库）。按键码使用 `rime_api::KEY_*` 常量（从 `rime-sys` 的
 `RimeKeyCode_XK_*` 重新导出），不要使用硬编码数字。
+
+`rime-sys` 支持 `bundled-vcpkg` feature：启用后 build.rs 自动调用 vcpkg
+编译 librime，用户无需手动安装。vcpkg overlay port 在
+`rime-sys/vcpkg-overlay/rime/`，配置文件 `vcpkg.json` 和
+`vcpkg-configuration.json` 也在 `rime-sys/` 下。
 
 静态链接时的传递依赖通过 vcpkg overlay port 的补丁声明在 `rime.pc` 的
 `Libs.private` 中，`build.rs` 仅额外处理平台相关的 C++ 运行时
