@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: MIT
 
 all:
-	@echo 没什么事可做
 
 install:
 	if [ -n "$$VCPKG_ROOT" ]; then \
