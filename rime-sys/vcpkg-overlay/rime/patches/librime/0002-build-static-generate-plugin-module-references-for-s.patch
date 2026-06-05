@@ -1,8 +1,8 @@
-From 1f47f491f7d7e53dffd6396b34d5033eb00c1ec4 Mon Sep 17 00:00:00 2001
+From 91681786d493f2ef7dadba588ec1dca16256cacd Mon Sep 17 00:00:00 2001
 From: Chen Linxuan <me@black-desk.cn>
 Date: Fri, 5 Jun 2026 17:22:20 +0800
-Subject: [PATCH] build(static): generate plugin module references for static
- linking
+Subject: [PATCH 2/3] build(static): generate plugin module references for
+ static linking
 
 librime already uses rime_declare_module_dependencies() in rime_api.cc
 to keep core modules (core, dict, gears, levers) alive when building
@@ -42,10 +42,10 @@ checks, so the empty define has no effect.
  4 files changed, 45 insertions(+), 6 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 010d6ed8e791..6429982461e2 100644
+index 3c170adfe62a..939544d77a77 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -266,7 +266,7 @@ message(STATUS "rime_plugins_libs: ${rime_plugins_deps}")
+@@ -263,7 +263,7 @@ message(STATUS "rime_plugins_libs: ${rime_plugins_deps}")
  message(STATUS "rime_plugins_modules: ${rime_plugins_modules}")
  set(list "")
  foreach(mod ${rime_plugins_modules})
@@ -55,10 +55,10 @@ index 010d6ed8e791..6429982461e2 100644
  set(RIME_SETUP_EXTRA_MODULES "${list}")
  if(BUILD_SHARED_LIBS AND BUILD_SEPARATE_LIBS AND rime_plugins_objs)
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
-index 8faa61f89c66..6cddc1907b2f 100644
+index e119ae09c073..9493f3f22625 100644
 --- a/src/CMakeLists.txt
 +++ b/src/CMakeLists.txt
-@@ -172,7 +172,6 @@ else()
+@@ -171,7 +171,6 @@ else()
    install(TARGETS rime-static DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR})
  endif()
  if(DEFINED RIME_SETUP_EXTRA_MODULES)

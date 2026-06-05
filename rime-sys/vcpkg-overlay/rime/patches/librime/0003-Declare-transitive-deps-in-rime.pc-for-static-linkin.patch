@@ -1,7 +1,18 @@
-From 19d6f4237bb2c4318d3ec0921c55ecd8a3c02361 Mon Sep 17 00:00:00 2001
+From c979c7f3cc31b7afebb880bc9ec5d4ca3b288171 Mon Sep 17 00:00:00 2001
 From: Chen Linxuan <me@black-desk.cn>
 Date: Fri, 5 Jun 2026 09:47:52 +0800
-Subject: [PATCH] Declare transitive deps in rime.pc for static linking
+Subject: [PATCH 3/3] Declare transitive deps in rime.pc for static linking
+
+TODO: The library names in Libs.private and Requires.private are
+hardcoded.  This is fragile because:
+- Boost does not provide official .pc files.
+- Some dependencies have no .pc files at all.
+- Some deps are pulled in by plugins (e.g. librime-lua brings in lua).
+- CMake has no convenient way to dynamically generate .pc from targets.
+- Essentially only string substitution is possible; hard to make flexible.
+
+This patch is a best-effort workaround.  If vcpkg upstream changes
+library names, this will need manual updates.
 
 Signed-off-by: Chen Linxuan <me@black-desk.cn>
 ---
@@ -10,7 +21,7 @@ Signed-off-by: Chen Linxuan <me@black-desk.cn>
  2 files changed, 7 insertions(+)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 3c170adfe62a..03d66a216791 100644
+index 939544d77a77..c49f8078433d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -212,6 +212,11 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux|FreeBSD|OpenBSD|DragonFly|GNU|Darwin" OR
@@ -26,7 +37,7 @@ index 3c170adfe62a..03d66a216791 100644
        ${PROJECT_SOURCE_DIR}/rime.pc.in
        ${PROJECT_BINARY_DIR}/rime.pc
 diff --git a/rime.pc.in b/rime.pc.in
-index 1a8c54318398..de0097f68811 100644
+index 1a8c54318398..a5682271674f 100644
 --- a/rime.pc.in
 +++ b/rime.pc.in
 @@ -10,3 +10,5 @@ Description: Rime Input Method Engine

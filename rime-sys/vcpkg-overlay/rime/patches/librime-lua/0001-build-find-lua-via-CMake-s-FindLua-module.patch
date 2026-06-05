@@ -1,3 +1,29 @@
+From 363fbbaf10cb619518ffbfa5c5682d02435b7335 Mon Sep 17 00:00:00 2001
+From: Chen Linxuan <me@black-desk.cn>
+Date: Fri, 5 Jun 2026 20:47:03 +0800
+Subject: [PATCH] build: find lua via CMake's FindLua module
+
+Replace the custom lua discovery logic (pkg-config fallback loop +
+in-tree source build) with a simple find_package(Lua REQUIRED) call.
+
+In the vcpkg environment, find_package(Lua) is intercepted by
+vcpkg's cmake wrapper (ports/lua/vcpkg-cmake-wrapper.cmake.in),
+which redirects to the unofficial-lua config package.  The wrapper
+sets LUA_LIBRARIES to "lua" and LUA_INCLUDE_DIR, and creates an
+imported target named "lua" (from unofficial-luaConfig.cmake).
+
+The set_target_properties(lua PROPERTIES IMPORTED_GLOBAL TRUE) call
+makes this imported target visible to the parent librime build, which
+needs to link against it when merging plugins into the static library.
+
+plugin_deps is changed from ${LUA_TARGET} (PkgConfig::LUA, no longer
+set) to ${LUA_LIBRARIES} (set by the vcpkg wrapper to "lua").
+
+Signed-off-by: Chen Linxuan <me@black-desk.cn>
+---
+ CMakeLists.txt | 42 ++++--------------------------------------
+ 1 file changed, 4 insertions(+), 38 deletions(-)
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 42f2ebba6468..3007ede358e7 100644
 --- a/CMakeLists.txt
@@ -53,3 +79,6 @@ index 42f2ebba6468..3007ede358e7 100644
 -set(plugin_deps ${LUA_TARGET} ${rime_library} ${rime_gears_library} PARENT_SCOPE)
 +set(plugin_deps ${LUA_LIBRARIES} ${rime_library} ${rime_gears_library} PARENT_SCOPE)
  set(plugin_modules "lua" PARENT_SCOPE)
+-- 
+2.53.0
+

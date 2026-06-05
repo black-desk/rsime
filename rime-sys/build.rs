@@ -47,16 +47,18 @@ fn find_vcpkg_root() -> Result<PathBuf, String> {
 }
 
 #[cfg(feature = "bundled-vcpkg")]
-fn vcpkg_triplet() -> String {
+fn vcpkg_triplet() -> Result<String, String> {
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
     match (arch.as_str(), os.as_str()) {
-        ("x86_64", "linux") => "x64-linux".to_string(),
-        ("aarch64", "linux") => "arm64-linux".to_string(),
-        ("x86_64", "macos") => "x64-osx".to_string(),
-        ("aarch64", "macos") => "arm64-osx".to_string(),
-        _ => format!("unsupported triplet: arch={arch}, os={os}"),
+        ("x86_64", "linux") => Ok("x64-linux".to_string()),
+        ("aarch64", "linux") => Ok("arm64-linux".to_string()),
+        ("x86_64", "macos") => Ok("x64-osx".to_string()),
+        ("aarch64", "macos") => Ok("arm64-osx".to_string()),
+        _ => Err(format!(
+            "bundled-vcpkg feature does not support target {arch}-{os}"
+        )),
     }
 }
 
@@ -64,20 +66,24 @@ fn vcpkg_triplet() -> String {
 fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path, target_dir: &Path) -> Result<PathBuf, String> {
     let vcpkg_bin = vcpkg_root.join("vcpkg");
 
-    let triplet = vcpkg_triplet();
+    let triplet = vcpkg_triplet()?;
 
     let install_root = target_dir.join("vcpkg_installed");
 
-    let status = std::process::Command::new(&vcpkg_bin)
+    let output = std::process::Command::new(&vcpkg_bin)
         .args(["install", "--triplet", &triplet, "--allow-unsupported"])
         .arg(format!("--x-install-root={}", install_root.display()))
         .current_dir(manifest_dir)
         .env("VCPKG_ROOT", vcpkg_root)
-        .status()
+        .output()
         .map_err(|e| format!("Failed to execute vcpkg: {e}"))?;
 
-    if !status.success() {
-        return Err(format!("vcpkg install failed with status: {status}"));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "vcpkg install failed with status: {}\n{stderr}",
+            output.status
+        ));
     }
 
     let installed_dir = install_root.join(&triplet);
@@ -133,6 +139,7 @@ fn main() {
             let new_path = if existing.is_empty() {
                 pkg_config_dir.to_string_lossy().into_owned()
             } else {
+                // TODO: Windows uses `;` as path separator
                 format!("{}:{}", pkg_config_dir.to_string_lossy(), existing)
             };
             // SAFETY: build.rs is single-threaded; setting an env var here is safe.
