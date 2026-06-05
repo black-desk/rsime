@@ -104,26 +104,8 @@ fn main() {
 
     let include_dirs: Vec<String> = lib.include_paths.iter().map(|p| p.to_string_lossy().into()).collect();
 
-    let is_static = {
-        #[cfg(feature = "bundled-vcpkg")]
-        { true }
-        #[cfg(not(feature = "bundled-vcpkg"))]
-        {
-            lib.link_paths.iter().any(|dir| {
-                dir.join("librime.a").exists() || dir.join("librime-static.a").exists()
-            })
-        }
-    };
-
-    // Static librime needs C++ standard library.
-    // Transitive dependencies are declared in rime.pc (Libs/Libs.private).
-    if is_static {
-        if cfg!(target_os = "macos") {
-            println!("cargo:rustc-link-lib=c++");
-        } else {
-            println!("cargo:rustc-link-lib=stdc++");
-        }
-    }
+    // C++ standard library and other transitive deps are declared in rime.pc
+    // (Libs.private), so pkg-config handles them automatically.
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")

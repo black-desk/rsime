@@ -1,30 +1,40 @@
-From b9de0cb3fa6c0000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 19d6f4237bb2c4318d3ec0921c55ecd8a3c02361 Mon Sep 17 00:00:00 2001
 From: Chen Linxuan <me@black-desk.cn>
-Date: Wed, 4 Jun 2026 16:30:00 +0800
+Date: Fri, 5 Jun 2026 09:47:52 +0800
 Subject: [PATCH] Declare transitive deps in rime.pc for static linking
-
-When building a static librime, the linker needs all transitive
-dependencies.  Add Libs.private to rime.pc.in so that
-`pkg-config --static rime` returns the full link chain.
-
-stdc++ / c++ is platform-dependent (Linux: -lstdc++, macOS: -lc++),
-so it is intentionally excluded here and handled by the consumer
-(e.g. build.rs with cfg(target_os)).
 
 Signed-off-by: Chen Linxuan <me@black-desk.cn>
 ---
- rime.pc.in | 2 ++
- 1 file changed, 2 insertions(+)
+ CMakeLists.txt | 5 +++++
+ rime.pc.in     | 2 ++
+ 2 files changed, 7 insertions(+)
 
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3c170adfe62a..03d66a216791 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -212,6 +212,11 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux|FreeBSD|OpenBSD|DragonFly|GNU|Darwin" OR
+   set(pkgdatadir "${CMAKE_INSTALL_FULL_DATADIR}/${RIME_DATA_DIR}")
+   set(pluginsdir "${CMAKE_INSTALL_FULL_LIBDIR}/${RIME_PLUGINS_DIR}")
+   set(includedir "${CMAKE_INSTALL_FULL_INCLUDEDIR}")
++  if(APPLE)
++    set(RIME_CXX_LINK "-lc++")
++  else()
++    set(RIME_CXX_LINK "-lstdc++")
++  endif()
+   configure_file(
+       ${PROJECT_SOURCE_DIR}/rime.pc.in
+       ${PROJECT_BINARY_DIR}/rime.pc
 diff --git a/rime.pc.in b/rime.pc.in
-index 3a3e65c51649..2b8e6bfb5238 100644
+index 1a8c54318398..de0097f68811 100644
 --- a/rime.pc.in
 +++ b/rime.pc.in
-@@ -8,3 +8,5 @@ pkgdatadir=@pkgdatadir@
+@@ -10,3 +10,5 @@ Description: Rime Input Method Engine
  Version: @rime_version@
  Cflags: -I${includedir}
  Libs: -L${libdir} -lrime
-+Libs.private: -lboost_filesystem -lboost_locale -lboost_thread -lboost_chrono -lboost_atomic -lboost_container -lboost_date_time -lboost_charconv -ldarts -lglog -lgflags -lleveldb -llua -lmarisa -lopencc -lyaml-cpp
-+
---
-2.47.2
++Requires.private: gflags, marisa, opencc, yaml-cpp
++Libs.private: @RIME_CXX_LINK@ -lboost_filesystem -lboost_locale -lboost_thread -lboost_chrono -lboost_atomic -lboost_container -lboost_date_time -lboost_charconv -ldarts -lleveldb -llua -lglog
+-- 
+2.53.0
+
