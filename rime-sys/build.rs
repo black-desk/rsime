@@ -39,9 +39,11 @@ fn find_vcpkg_root() -> Result<PathBuf, String> {
             }
         }
     }
-    Err(
-        "bundled-vcpkg feature requires vcpkg. Set VCPKG_ROOT or install vcpkg in PATH.".to_string(),
-    )
+    Err(concat!(
+        "bundled-vcpkg feature requires vcpkg, but it was not found.\n",
+        "Install vcpkg: https://vcpkg.io/en/getting-started.html\n",
+        "Then either set VCPKG_ROOT or ensure the vcpkg executable is in PATH."
+    ).to_string())
 }
 
 #[cfg(feature = "bundled-vcpkg")]

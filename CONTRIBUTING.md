@@ -11,43 +11,54 @@ SPDX-License-Identifier: MIT
 ## 前置条件
 
 - [Rust](https://www.rust-lang.org/tools/install) 工具链
-- [vcpkg](https://vcpkg.io/)（需设置 `VCPKG_ROOT` 环境变量）
 - C/C++ 构建工具链（CMake、C 编译器等）
 - Git（用于获取子模块和安装方案）
+- librime，两种方式二选一：
+  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或 `brew install librime`（macOS）
+  - **vcpkg 自动编译**：需安装 [vcpkg](https://vcpkg.io/en/getting-started.html) 并设置 `VCPKG_ROOT` 环境变量
 
 ## 构建与开发
 
-使用 `--recurse-submodules` 克隆仓库，然后用 `make` 构建：
+使用 `--recurse-submodules` 克隆仓库：
 
 ```bash
 git clone --recurse-submodules https://github.com/black-desk/rsime.git
 cd rsime
-make          # release 构建（自动调用 vcpkg install）
 ```
 
-构建通过 `RIME_INCLUDE_DIR` / `RIME_LIB_DIR` 环境变量指向 vcpkg 安装的头文件和库文件，
-由 Makefile 自动设置。
-
-其他命令：
+**使用系统 librime：**
 
 ```bash
-make debug    # debug 构建
-make test     # 运行测试（自动先完成 debug 构建）
-make clippy   # lint 检查
-make clean    # 清理构建产物
-make install  # 安装
+cargo build --features cli
+```
+
+**使用 vcpkg 自动编译 librime：**
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg  # 需事先安装 vcpkg
+cargo build --features cli,bundled-vcpkg
+```
+
+常用命令：
+
+```bash
+cargo test --all-features          # 运行测试
+cargo clippy --all-features        # lint 检查
+make install                       # 安装到 ~/.cargo/bin/（自动检测 VCPKG_ROOT）
 ```
 
 ## 项目结构
 
 ```
-rsime/src/main.rs        — 主程序，所有逻辑在单文件中 (~600 行)
-rsime/src/rime.rs        — RIME 交互封装
+rsime/src/main.rs        — CLI 入门（#[cfg(feature = "cli")]）
+rsime/src/lib.rs         — 库入口，导出 rime 模块
+rsime/src/rime.rs        — librime 安全封装（Session/Config/Levers API 等）
 rsime/tests/stdio.rs     — stdio 模式的集成测试
 rime-sys/                — 本地 rime-sys crate (bindgen + pkg-config)
-lua/rsime/               — Neovim 插件 Lua 源码 (init.lua, ui.lua)
-plugin/rsime.lua         — Neovim 插件入口 (Vim 自动加载)
-misc/vcpkg-ports/rime/   — 自定义 vcpkg port，构建 librime + 插件
+rime-sys/vcpkg-overlay/  — 自定义 vcpkg port，构建 librime + 插件
+rsime.nvim/              — Neovim 插件（lua/rsime/ + plugin/rsime.lua）
+lua/ -> rsime.nvim/lua   — 符号链接，兼容 packpath
+plugin/ -> rsime.nvim/plugin
 .format/                 — editorconfig / prettierrc (根目录 symlink 引用)
 scripts/ls-todo.sh       — 列出项目中的 TODO/FIXME 项
 ```

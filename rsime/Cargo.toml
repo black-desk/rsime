@@ -10,6 +10,8 @@ edition = "2024"
 [features]
 default = []
 cli = ["clap", "clap_complete", "crossterm", "ratatui", "ureq"]
+# 转发到 rime-sys/bundled-vcpkg，自动编译 librime。
+# 需预装 vcpkg 并设置 VCPKG_ROOT，详见 rime-sys/Cargo.toml。
 bundled-vcpkg = ["rime-sys/bundled-vcpkg"]
 
 [dependencies]

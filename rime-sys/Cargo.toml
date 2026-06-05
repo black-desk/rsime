@@ -8,6 +8,9 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
+# 启用后 build.rs 自动调用 vcpkg 编译 librime。
+# 用户需预装 vcpkg（https://vcpkg.io/en/getting-started.html），
+# 并设置 VCPKG_ROOT 环境变量或将 vcpkg 放入 PATH。
 bundled-vcpkg = []
 
 [build-dependencies]

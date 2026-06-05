@@ -20,24 +20,42 @@ SPDX-License-Identifier: MIT
 ## 前置条件
 
 - [Rust](https://www.rust-lang.org/tools/install) 工具链
-- [vcpkg](https://vcpkg.io/)（需设置 `VCPKG_ROOT`）
 - C/C++ 构建工具链（CMake、C 编译器等）
 - Git（用于获取子模块和安装方案）
+- librime，两种方式二选一：
+  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或 `brew install librime`（macOS）
+  - **vcpkg 自动编译**：需预装 [vcpkg](https://vcpkg.io/en/getting-started.html) 并设置 `VCPKG_ROOT` 环境变量，或确保 `vcpkg` 可执行文件在 `PATH` 中
 
 ## 构建
 
-使用 `--recurse-submodules` 克隆仓库，然后用 `make` 构建：
+使用 `--recurse-submodules` 克隆仓库：
 
 ```bash
-git clone https://github.com/black-desk/rsime.git
+git clone --recurse-submodules https://github.com/black-desk/rsime.git
 cd rsime
-make
 ```
 
-构建过程：
+**使用系统 librime：**
 
-1. 通过 vcpkg 安装 `rime` 库。
-2. 使用 `cargo build` 编译 Rust 项目，并指向 vcpkg 构建的头文件和库文件。
+```bash
+cargo build --features cli
+```
+
+**使用 vcpkg 自动编译 librime：**
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg  # 需事先安装 vcpkg
+cargo build --features cli,bundled-vcpkg
+```
+
+**安装到 `~/.cargo/bin/`：**
+
+```bash
+make install
+# 等效于：
+#   若 VCPKG_ROOT 已设置：cargo install --path rsime --features cli,bundled-vcpkg
+#   否则：                  cargo install --path rsime --features cli
+```
 
 ## 使用
 
@@ -99,7 +117,7 @@ rsime 自带 Neovim 插件，通过 `rsime stdio` 子进程在 Neovim 中实现�
 
 ### 安装
 
-Neovim 插件位于 `misc/rsime.nvim/`，仓库根目录通过符号链接（`lua/`、`plugin/`）指向该子目录，因此插件管理器可直接使用。使用前需自行编译安装 `rsime` 二进制，构建方法参见上方的「构建」章节。
+Neovim 插件位于仓库根目录的 `rsime.nvim/`，根目录的 `lua/` 和 `plugin/` 是指向该目录的符号链接，因此插件管理器可直接使用。使用前需自行编译安装 `rsime` 二进制，构建方法参见上方的「构建」章节。
 
 **lazy.nvim：**
 
