@@ -3,10 +3,21 @@
 // SPDX-License-Identifier: MIT
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-#[cfg(feature = "bundled-vcpkg")]
-use std::path::Path;
+/// Emit `cargo:rerun-if-changed` for every file under `dir`, relative to `base`.
+fn emit_rerun_for_dir(dir: &Path, base: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                emit_rerun_for_dir(&path, base);
+            } else if let Ok(rel) = path.strip_prefix(base) {
+                println!("cargo:rerun-if-changed={}", rel.display());
+            }
+        }
+    }
+}
 
 #[cfg(feature = "bundled-vcpkg")]
 fn find_vcpkg_root() -> Result<PathBuf, String> {
@@ -48,13 +59,16 @@ fn vcpkg_triplet() -> String {
 }
 
 #[cfg(feature = "bundled-vcpkg")]
-fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path) -> Result<PathBuf, String> {
+fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path, target_dir: &Path) -> Result<PathBuf, String> {
     let vcpkg_bin = vcpkg_root.join("vcpkg");
 
     let triplet = vcpkg_triplet();
 
+    let install_root = target_dir.join("vcpkg_installed");
+
     let status = std::process::Command::new(&vcpkg_bin)
         .args(["install", "--triplet", &triplet, "--allow-unsupported"])
+        .arg(format!("--x-install-root={}", install_root.display()))
         .current_dir(manifest_dir)
         .env("VCPKG_ROOT", vcpkg_root)
         .status()
@@ -64,7 +78,7 @@ fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path) -> Result<PathBuf, 
         return Err(format!("vcpkg install failed with status: {status}"));
     }
 
-    let installed_dir = manifest_dir.join(format!("vcpkg_installed/{triplet}"));
+    let installed_dir = install_root.join(&triplet);
     if !installed_dir.exists() {
         return Err(format!(
             "vcpkg installed directory not found: {}",
@@ -76,13 +90,39 @@ fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path) -> Result<PathBuf, 
 }
 
 fn main() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+
+    // Emit rerun-if directives for bindgen inputs (always relevant)
+    println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=build.rs");
+    let include_dir = manifest_dir.join("include");
+    if include_dir.exists() {
+        emit_rerun_for_dir(&include_dir, &manifest_dir);
+    }
+
     // === bundled-vcpkg feature: install librime via vcpkg ===
     #[cfg(feature = "bundled-vcpkg")]
     {
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        // Rerun when vcpkg config or overlay changes
+        println!("cargo:rerun-if-changed=vcpkg.json");
+        println!("cargo:rerun-if-changed=vcpkg-configuration.json");
+        println!("cargo:rerun-if-env-changed=VCPKG_ROOT");
+        let overlay_dir = manifest_dir.join("vcpkg-overlay");
+        if overlay_dir.exists() {
+            emit_rerun_for_dir(&overlay_dir, &manifest_dir);
+        }
+
         let vcpkg_root =
             find_vcpkg_root().expect("bundled-vcpkg feature requires vcpkg to be installed");
-        let installed_dir = run_vcpkg_install(&manifest_dir, &vcpkg_root)
+
+        // Derive target/ from OUT_DIR: target/<profile>/build/<hash>/out
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let target_dir = out_dir.parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap()
+            .parent().unwrap();
+
+        let installed_dir = run_vcpkg_install(&manifest_dir, &vcpkg_root, &target_dir)
             .expect("vcpkg install for librime failed");
 
         let pkg_config_dir = installed_dir.join("lib").join("pkgconfig");
