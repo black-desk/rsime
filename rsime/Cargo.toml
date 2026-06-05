@@ -8,8 +8,9 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["cli"]
+default = []
 cli = ["clap", "clap_complete", "crossterm", "ratatui", "ureq"]
+bundled-vcpkg = ["rime-sys/bundled-vcpkg"]
 
 [dependencies]
 anyhow = "1.0.100"
