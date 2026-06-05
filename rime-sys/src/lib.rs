@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]

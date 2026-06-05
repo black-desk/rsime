@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH
@@ -55,4 +55,10 @@ vcpkg_fixup_pkgconfig()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
-vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
+vcpkg_install_copyright(
+  FILE_LIST
+    "${SOURCE_PATH}/LICENSE"
+    "${SOURCE_PATH_LUA}/LICENSE"
+    "${SOURCE_PATH_OCTAGRAM}/LICENSE"
+    "${SOURCE_PATH_PREDICT}/LICENSE"
+)

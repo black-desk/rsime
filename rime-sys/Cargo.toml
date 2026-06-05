@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Chen Linxuan <me@black-desk.cn>
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 [package]
 name = "rime-sys"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [features]
 # 启用后 build.rs 自动调用 vcpkg 编译 librime。
