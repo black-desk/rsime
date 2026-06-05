@@ -21,12 +21,34 @@ jobs:
         env:
           CLEAN_IGNORE: rime-sys/vcpkg-overlay/**/*.patch
 
-  autotools:
-    name: cargo test (vcpkg bundled librime)
+  test:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux (system librime)
+            os: ubuntu-latest
+            setup: sudo apt update && sudo apt install -y librime-dev
+            cargo-flags: --workspace
+          - name: linux (bundled-vcpkg)
+            os: ubuntu-latest
+            setup: ""
+            cargo-flags: --all-features --workspace
+            vcpkg-root: /usr/local/share/vcpkg
+          - name: macos (system librime)
+            os: macos-latest
+            setup: brew install librime pkg-config
+            cargo-flags: --workspace
+          - name: macos (bundled-vcpkg)
+            os: macos-latest
+            setup: ""
+            cargo-flags: --all-features --workspace
+            vcpkg-root: /usr/local/share/vcpkg
     permissions:
       id-token: write
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,48 +61,23 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Pre-download lua for vcpkg
-        run: |
-          mkdir -p /usr/local/share/vcpkg/downloads
-          wget -O /usr/local/share/vcpkg/downloads/lua-5.4.8.tar.gz https://ftp2.osuosl.org/pub/blfs/conglomeration/lua/lua-5.4.8.tar.gz
+      - name: Install system librime
+        if: matrix.setup != ''
+        run: ${{ matrix.setup }}
 
-      - name: Build and test with coverage (bundled-vcpkg)
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Build and test with coverage
+        run: cargo llvm-cov ${{ matrix.cargo-flags }} --lcov --output-path lcov.info
         env:
-          VCPKG_ROOT: /usr/local/share/vcpkg
+          VCPKG_ROOT: ${{ matrix.vcpkg-root }}
 
       - uses: black-desk/workflows/codecov@master
-
-  rust:
-    name: rust (system librime)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - run: |
-          sudo apt update
-          sudo apt install -y librime-dev
-      - uses: black-desk/workflows/rust@master
-
-  macos:
-    name: rust (macOS system librime)
-    runs-on: macos-latest
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - run: brew install librime pkg-config
-      - uses: black-desk/workflows/rust@master
 
   pass:
     name: pass
     if: always()
     needs:
       - generic
-      - autotools
-      - rust
-      - macos
+      - test
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
