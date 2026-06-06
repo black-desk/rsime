@@ -21,7 +21,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use rsime::rime::{
-    create_session, deploy_on_changed, finalize, get_schema_list, initialize,
+    deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
     KEY_BACKSPACE, KEY_DELETE, KEY_DOWN, KEY_END, KEY_ESCAPE, KEY_HOME, KEY_LEFT, KEY_PAGEDOWN,
     KEY_PAGEUP, KEY_RETURN, KEY_RIGHT, KEY_TAB, KEY_UP, KEY_SPACE,
@@ -341,7 +341,7 @@ fn run_stdio(session: &Session) -> Result<()> {
             // 组合状态下按 Esc：交给 RIME 处理（取消组合）
         }
 
-        session.process_key(rsime::rime::KeyEvent::new(key_code));
+        let _consumed = session.process_key(rsime::rime::KeyEvent::new(key_code));
 
         let mut commit = String::new();
         while let Some(c) = session.commit() {
@@ -500,10 +500,10 @@ fn tui_loop(
                     KeyCode::Esc => break,
                     KeyCode::Enter if preedit.is_empty() => break,
                     KeyCode::Enter => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_RETURN as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_RETURN as i32));
                     }
                     KeyCode::Backspace if !preedit.is_empty() => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_BACKSPACE as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_BACKSPACE as i32));
                     }
                     KeyCode::Backspace if *cursor > 0 => {
                         let byte_pos = output
@@ -539,19 +539,19 @@ fn tui_loop(
                         *cursor += 1;
                     }
                     KeyCode::Char(c) => {
-                        session.process_key(rsime::rime::KeyEvent::new(c as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(c as i32));
                     }
                     KeyCode::Up => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
                     }
                     KeyCode::Down | KeyCode::Tab => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_DOWN as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_DOWN as i32));
                     }
                     KeyCode::PageUp => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEUP as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEUP as i32));
                     }
                     KeyCode::PageDown => {
-                        session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEDOWN as i32));
+                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEDOWN as i32));
                     }
                     _ => {}
                 }
@@ -580,7 +580,7 @@ fn main() -> Result<()> {
         Commands::ListSchemas => list_schemas_cmd(),
         Commands::CurrentSchema => {
             let _traits = init_rime()?;
-            let mut session = create_session()?;
+            let mut session = Session::new()?;
             let status = session.status()?;
             println!("{}", status.schema_id());
             let _ = session.close();
@@ -589,7 +589,7 @@ fn main() -> Result<()> {
         }
         Commands::SetSchema { schema_id } => {
             let _traits = init_rime()?;
-            let mut session = create_session()?;
+            let mut session = Session::new()?;
             session.select_schema(&schema_id)?;
             println!("{}", schema_id);
             let _ = session.close();
@@ -598,7 +598,7 @@ fn main() -> Result<()> {
         }
         Commands::Tui => {
             let _traits = init_rime()?;
-            let mut session = create_session()?;
+            let mut session = Session::new()?;
             let result = run_tui(&session);
             let _ = session.close();
             finalize();
@@ -606,7 +606,7 @@ fn main() -> Result<()> {
         }
         Commands::Stdio => {
             let _traits = init_rime()?;
-            let mut session = create_session()?;
+            let mut session = Session::new()?;
             let result = run_stdio(&session);
             let _ = session.close();
             finalize();

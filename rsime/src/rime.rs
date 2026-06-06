@@ -69,9 +69,20 @@ static RIME_API: LazyLock<RimeApiWrapper> = LazyLock::new(|| unsafe { rime_get_a
 // SAFETY: `rime_get_api()` must be called after `setup()`. The API pointer
 // returned is valid for the lifetime of the process. `RimeApiWrapper` wraps
 // a raw pointer but is only accessed through the `rime_api_call!` macro
-// which dereferences it in an unsafe block. `Send + Sync` is safe because
-// the RIME API is thread-safe.
+// which dereferences it in an unsafe block.
+//
+// `Send + Sync` is required for `LazyLock` in a static, not because librime
+// is fully thread-safe. While librime has a mutex around notification
+// callbacks (Service::Notify), session operations (process_key,
+// create_session, etc.) are not synchronized. Callers should not invoke
+// session methods concurrently from multiple threads.
 
+// Invoke a function on the global RIME API vtable.
+//
+// Panics if the function pointer is null, which indicates a librime version
+// mismatch (the API struct is statically populated at build time, so null
+// pointers are not expected in normal operation). Panicking is preferable to
+// silent UB from calling a null pointer.
 macro_rules! rime_api_call {
     ($f:ident, $($arg:tt)*) => {
         (***RIME_API).$f.unwrap()($($arg)*)
@@ -87,6 +98,13 @@ macro_rules! rime_api_call {
 ///
 /// Should be created with [`Traits::new()`], configured with setter methods,
 /// then passed to [`setup()`] and [`initialize()`].
+///
+/// # Lifetime safety
+///
+/// It is safe to drop `Traits` after calling [`setup()`] and [`initialize()`].
+/// The C side (`SetupDeployer`) copies all string fields into `std::string` /
+/// `std::filesystem::path` owned by the `Deployer` singleton — no pointers into
+/// `Traits` memory are retained after those functions return.
 pub struct Traits {
     inner: rime_sys::RimeTraits,
     /// Owned C string pointers that need to be freed on drop.
@@ -254,6 +272,7 @@ extern "C" fn notification_handler(
 // --- Deployment ---
 
 /// Result of a deployment operation.
+#[must_use = "deployment result should be checked"]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum DeployResult {
     /// Deployment completed successfully.
@@ -380,6 +399,7 @@ pub fn get_schema_list() -> Vec<SchemaInfo> {
 // --- Session ---
 
 /// A RIME input session. Automatically destroys the session on drop.
+#[must_use = "session should be used for input processing"]
 pub struct Session {
     session_id: RimeSessionId,
     closed: bool,
@@ -397,9 +417,13 @@ impl Session {
     // --- Input ---
 
     /// Process a key event.
-    pub fn process_key(&self, key: KeyEvent) {
+    ///
+    /// Returns `true` if the key was consumed by the input method engine,
+    /// `false` if the engine did not handle it (caller should forward it).
+    #[must_use = "the return value indicates whether the key was consumed; unhandled keys should be forwarded"]
+    pub fn process_key(&self, key: KeyEvent) -> bool {
         unsafe {
-            rime_api_call!(process_key, self.session_id, key.key_code, key.modifiers);
+            rime_api_call!(process_key, self.session_id, key.key_code, key.modifiers) != 0
         }
     }
 
@@ -657,22 +681,25 @@ impl Session {
     }
 }
 
-/// Create a new RIME input session.
-pub fn create_session() -> anyhow::Result<Session> {
-    let session_id = unsafe { rime_api_call!(create_session) };
-    let session = Session {
-        session_id,
-        closed: false,
-    };
-    if unsafe { rime_api_call!(find_session, session.session_id) == 0 } {
-        anyhow::bail!("failed to create rime session");
+impl Session {
+    /// Create a new RIME input session.
+    pub fn new() -> anyhow::Result<Self> {
+        let session_id = unsafe { rime_api_call!(create_session) };
+        let session = Session {
+            session_id,
+            closed: false,
+        };
+        if unsafe { rime_api_call!(find_session, session.session_id) == 0 } {
+            anyhow::bail!("failed to create rime session");
+        }
+        Ok(session)
     }
-    Ok(session)
 }
 
 // --- KeyEvent ---
 
 /// A key event with key code and modifier flags.
+#[must_use = "key event should be passed to process_key"]
 #[derive(Copy, Clone)]
 pub struct KeyEvent {
     /// X11-style key code.
@@ -726,6 +753,7 @@ impl KeyEvent {
 // --- Context / Composition / Menu / Candidate ---
 
 /// Input context for a session, containing composition and candidate menu.
+#[must_use = "context should be inspected for composition and candidates"]
 pub struct Context {
     inner: RimeContext,
 }
@@ -775,7 +803,7 @@ impl Context {
     /// Get the select labels for candidates (e.g., `"1."`, `"2."`, etc.).
     pub fn select_labels(&self) -> Vec<String> {
         let num = self.inner.menu.num_candidates as usize;
-        if self.inner.select_labels.is_null() || num == 0 {
+        if self.inner.select_labels.is_null() {
             return Vec::new();
         }
         unsafe {
@@ -845,6 +873,7 @@ pub struct Candidate {
 // --- Commit ---
 
 /// Committed text from the input method.
+#[must_use = "commit text should be read"]
 pub struct Commit {
     inner: RimeCommit,
 }
@@ -867,6 +896,7 @@ impl Drop for Commit {
 // --- Status ---
 
 /// Session status information.
+#[must_use = "status should be inspected"]
 pub struct Status {
     inner: RimeStatus,
 }
@@ -969,6 +999,7 @@ impl Drop for CandidateIterator {
 // --- Config ---
 
 /// A RIME configuration handle. Automatically closes on drop.
+#[must_use = "config should be used for reading or writing settings"]
 pub struct Config {
     inner: RimeConfig,
 }
@@ -1099,29 +1130,41 @@ impl Config {
 
     // --- Setters ---
 
-    /// Set a boolean config value. Returns `true` on success.
-    pub fn set_bool(&self, key: &str, value: bool) -> anyhow::Result<bool> {
+    /// Set a boolean config value.
+    pub fn set_bool(&self, key: &str, value: bool) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_set_bool, self.ptr(), k.as_ptr(), value as c_int) != 0 })
+        if unsafe { rime_api_call!(config_set_bool, self.ptr(), k.as_ptr(), value as c_int) == 0 } {
+            anyhow::bail!("failed to set config bool: {key}");
+        }
+        Ok(())
     }
 
-    /// Set an integer config value. Returns `true` on success.
-    pub fn set_int(&self, key: &str, value: i32) -> anyhow::Result<bool> {
+    /// Set an integer config value.
+    pub fn set_int(&self, key: &str, value: i32) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_set_int, self.ptr(), k.as_ptr(), value as c_int) != 0 })
+        if unsafe { rime_api_call!(config_set_int, self.ptr(), k.as_ptr(), value as c_int) == 0 } {
+            anyhow::bail!("failed to set config int: {key}");
+        }
+        Ok(())
     }
 
-    /// Set a double config value. Returns `true` on success.
-    pub fn set_double(&self, key: &str, value: f64) -> anyhow::Result<bool> {
+    /// Set a double config value.
+    pub fn set_double(&self, key: &str, value: f64) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_set_double, self.ptr(), k.as_ptr(), value) != 0 })
+        if unsafe { rime_api_call!(config_set_double, self.ptr(), k.as_ptr(), value) == 0 } {
+            anyhow::bail!("failed to set config double: {key}");
+        }
+        Ok(())
     }
 
-    /// Set a string config value. Returns `true` on success.
-    pub fn set_string(&self, key: &str, value: &str) -> anyhow::Result<bool> {
+    /// Set a string config value.
+    pub fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
         let k = CString::new(key)?;
         let v = CString::new(value)?;
-        Ok(unsafe { rime_api_call!(config_set_string, self.ptr(), k.as_ptr(), v.as_ptr()) != 0 })
+        if unsafe { rime_api_call!(config_set_string, self.ptr(), k.as_ptr(), v.as_ptr()) == 0 } {
+            anyhow::bail!("failed to set config string: {key}");
+        }
+        Ok(())
     }
 
     // --- Structure operations ---
@@ -1133,27 +1176,39 @@ impl Config {
     }
 
     /// Create a list at the given key.
-    pub fn create_list(&self, key: &str) -> anyhow::Result<bool> {
+    pub fn create_list(&self, key: &str) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_create_list, self.ptr(), k.as_ptr()) != 0 })
+        if unsafe { rime_api_call!(config_create_list, self.ptr(), k.as_ptr()) == 0 } {
+            anyhow::bail!("failed to create list: {key}");
+        }
+        Ok(())
     }
 
     /// Create a map at the given key.
-    pub fn create_map(&self, key: &str) -> anyhow::Result<bool> {
+    pub fn create_map(&self, key: &str) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_create_map, self.ptr(), k.as_ptr()) != 0 })
+        if unsafe { rime_api_call!(config_create_map, self.ptr(), k.as_ptr()) == 0 } {
+            anyhow::bail!("failed to create map: {key}");
+        }
+        Ok(())
     }
 
     /// Clear a config value at the given key.
-    pub fn clear(&self, key: &str) -> anyhow::Result<bool> {
+    pub fn clear(&self, key: &str) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(unsafe { rime_api_call!(config_clear, self.ptr(), k.as_ptr()) != 0 })
+        if unsafe { rime_api_call!(config_clear, self.ptr(), k.as_ptr()) == 0 } {
+            anyhow::bail!("failed to clear config: {key}");
+        }
+        Ok(())
     }
 
     /// Update the config signature with the given signer.
-    pub fn update_signature(&self, signer: &str) -> anyhow::Result<bool> {
+    pub fn update_signature(&self, signer: &str) -> anyhow::Result<()> {
         let s = CString::new(signer)?;
-        Ok(unsafe { rime_api_call!(config_update_signature, self.ptr(), s.as_ptr()) != 0 })
+        if unsafe { rime_api_call!(config_update_signature, self.ptr(), s.as_ptr()) == 0 } {
+            anyhow::bail!("failed to update signature: {signer}");
+        }
+        Ok(())
     }
 
     // --- Iterators ---
@@ -1272,36 +1327,41 @@ pub struct SwitcherSettings(*mut rime_sys::RimeSwitcherSettings);
 /// Opaque handle for user dictionary iterator (levers API).
 pub struct UserDictIterator(rime_sys::RimeUserDictIterator);
 
-/// Internal: obtain the levers API vtable via `find_module("levers")`.
+/// Wrapper for the levers API pointer to satisfy `Send + Sync` for `LazyLock`.
+/// Same rationale as `RimeApiWrapper` — the pointer is process-lifetime stable.
+struct LeversApiWrapper(*mut rime_sys::RimeLeversApi);
+unsafe impl Send for LeversApiWrapper {}
+unsafe impl Sync for LeversApiWrapper {}
+
+/// Cached levers API vtable, obtained via `find_module("levers")`.
 ///
-/// # Safety
-///
-/// Must be called after RIME is initialized. The returned pointer is valid for
-/// the lifetime of the process. The cast from `*mut RimeCustomApi` to
+/// The module pointer is valid for the lifetime of the process, so it is safe
+/// to cache in a `LazyLock`. The cast from `*mut RimeCustomApi` to
 /// `*mut RimeLeversApi` is sound because the levers module's `get_api()` returns
 /// a pointer to a statically allocated `RimeLeversApi` cast to the base type
 /// `RimeCustomApi` — this is the standard RIME plugin API pattern.
-fn get_levers_api() -> Option<*mut rime_sys::RimeLeversApi> {
-    let module_name = CString::new("levers").ok()?;
+///
+/// # Panics
+///
+/// Accessing this before RIME is initialized, or if the levers module is not
+/// available, will panic.
+static RIME_LEVERS_API: LazyLock<LeversApiWrapper> = LazyLock::new(|| {
+    let module_name = CString::new("levers").expect("CString creation failed");
     let module = unsafe { rime_api_call!(find_module, module_name.as_ptr()) };
-    if module.is_null() {
-        return None;
-    }
-    let get_api = unsafe { (*module).get_api? };
+    assert!(!module.is_null(), "levers module not found");
+    let get_api = unsafe { (*module).get_api }.expect("levers module has no get_api");
     let api = unsafe { get_api() };
-    if api.is_null() {
-        return None;
-    }
-    Some(api as *mut rime_sys::RimeLeversApi)
-}
+    assert!(!api.is_null(), "levers get_api returned null");
+    LeversApiWrapper(api as *mut rime_sys::RimeLeversApi)
+});
 
 macro_rules! rime_levers_call {
     ($f:ident) => {{
-        let api = crate::rime::get_levers_api().expect("levers module not available");
+        let api = RIME_LEVERS_API.0;
         unsafe { (*api).$f.unwrap()() }
     }};
     ($f:ident, $($arg:tt)*) => {{
-        let api = crate::rime::get_levers_api().expect("levers module not available");
+        let api = RIME_LEVERS_API.0;
         unsafe { (*api).$f.unwrap()($($arg)*) }
     }};
 }
@@ -1333,29 +1393,41 @@ impl CustomSettings {
         rime_levers_call!(save_settings, self.0) != 0
     }
 
-    /// Customize a boolean value. Returns `true` if successful.
-    pub fn customize_bool(&self, key: &str, value: bool) -> anyhow::Result<bool> {
+    /// Customize a boolean value.
+    pub fn customize_bool(&self, key: &str, value: bool) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(rime_levers_call!(customize_bool, self.0, k.as_ptr(), value as c_int) != 0)
+        if rime_levers_call!(customize_bool, self.0, k.as_ptr(), value as c_int) == 0 {
+            anyhow::bail!("failed to customize bool: {key}");
+        }
+        Ok(())
     }
 
-    /// Customize an integer value. Returns `true` if successful.
-    pub fn customize_int(&self, key: &str, value: i32) -> anyhow::Result<bool> {
+    /// Customize an integer value.
+    pub fn customize_int(&self, key: &str, value: i32) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(rime_levers_call!(customize_int, self.0, k.as_ptr(), value as c_int) != 0)
+        if rime_levers_call!(customize_int, self.0, k.as_ptr(), value as c_int) == 0 {
+            anyhow::bail!("failed to customize int: {key}");
+        }
+        Ok(())
     }
 
-    /// Customize a double value. Returns `true` if successful.
-    pub fn customize_double(&self, key: &str, value: f64) -> anyhow::Result<bool> {
+    /// Customize a double value.
+    pub fn customize_double(&self, key: &str, value: f64) -> anyhow::Result<()> {
         let k = CString::new(key)?;
-        Ok(rime_levers_call!(customize_double, self.0, k.as_ptr(), value) != 0)
+        if rime_levers_call!(customize_double, self.0, k.as_ptr(), value) == 0 {
+            anyhow::bail!("failed to customize double: {key}");
+        }
+        Ok(())
     }
 
-    /// Customize a string value. Returns `true` if successful.
-    pub fn customize_string(&self, key: &str, value: &str) -> anyhow::Result<bool> {
+    /// Customize a string value.
+    pub fn customize_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
         let k = CString::new(key)?;
         let v = CString::new(value)?;
-        Ok(rime_levers_call!(customize_string, self.0, k.as_ptr(), v.as_ptr()) != 0)
+        if rime_levers_call!(customize_string, self.0, k.as_ptr(), v.as_ptr()) == 0 {
+            anyhow::bail!("failed to customize string: {key}");
+        }
+        Ok(())
     }
 
     /// Check if this is the first time these settings have been loaded.
@@ -1483,18 +1555,22 @@ impl SwitcherSettings {
     }
 
     /// Select which schemas to activate.
-    pub fn select_schemas(&self, schema_ids: &[&str]) -> anyhow::Result<bool> {
+    pub fn select_schemas(&self, schema_ids: &[&str]) -> anyhow::Result<()> {
         let cstrings: Vec<CString> = schema_ids
             .iter()
             .map(|s| CString::new(*s))
             .collect::<std::result::Result<_, _>>()?;
         let mut ptrs: Vec<*const c_char> = cstrings.iter().map(|cs| cs.as_ptr()).collect();
-        Ok(rime_levers_call!(
+        if rime_levers_call!(
             select_schemas,
             self.0,
             ptrs.as_mut_ptr(),
             cstrings.len() as c_int
-        ) != 0)
+        ) == 0
+        {
+            anyhow::bail!("failed to select schemas");
+        }
+        Ok(())
     }
 
     /// Get the hotkey configuration string.
@@ -1508,9 +1584,12 @@ impl SwitcherSettings {
     }
 
     /// Set the hotkey configuration string.
-    pub fn set_hotkeys(&self, hotkeys: &str) -> anyhow::Result<bool> {
+    pub fn set_hotkeys(&self, hotkeys: &str) -> anyhow::Result<()> {
         let s = CString::new(hotkeys)?;
-        Ok(rime_levers_call!(set_hotkeys, self.0, s.as_ptr()) != 0)
+        if rime_levers_call!(set_hotkeys, self.0, s.as_ptr()) == 0 {
+            anyhow::bail!("failed to set hotkeys");
+        }
+        Ok(())
     }
 }
 
@@ -1557,29 +1636,29 @@ impl Drop for UserDictIterator {
 }
 
 /// Backup a user dictionary to a snapshot file.
-pub fn backup_user_dict(dict_name: &str) -> bool {
-    let s = CString::new(dict_name).expect("invalid dict name");
-    rime_levers_call!(backup_user_dict, s.as_ptr()) != 0
+pub fn backup_user_dict(dict_name: &str) -> anyhow::Result<bool> {
+    let s = CString::new(dict_name)?;
+    Ok(rime_levers_call!(backup_user_dict, s.as_ptr()) != 0)
 }
 
 /// Restore a user dictionary from a snapshot file.
-pub fn restore_user_dict(snapshot_file: &str) -> bool {
-    let s = CString::new(snapshot_file).expect("invalid snapshot file");
-    rime_levers_call!(restore_user_dict, s.as_ptr()) != 0
+pub fn restore_user_dict(snapshot_file: &str) -> anyhow::Result<bool> {
+    let s = CString::new(snapshot_file)?;
+    Ok(rime_levers_call!(restore_user_dict, s.as_ptr()) != 0)
 }
 
 /// Export a user dictionary to a text file.
-pub fn export_user_dict(dict_name: &str, text_file: &str) -> i32 {
-    let d = CString::new(dict_name).expect("invalid dict name");
-    let t = CString::new(text_file).expect("invalid text file");
-    rime_levers_call!(export_user_dict, d.as_ptr(), t.as_ptr())
+pub fn export_user_dict(dict_name: &str, text_file: &str) -> anyhow::Result<i32> {
+    let d = CString::new(dict_name)?;
+    let t = CString::new(text_file)?;
+    Ok(rime_levers_call!(export_user_dict, d.as_ptr(), t.as_ptr()))
 }
 
 /// Import a user dictionary from a text file.
-pub fn import_user_dict(dict_name: &str, text_file: &str) -> i32 {
-    let d = CString::new(dict_name).expect("invalid dict name");
-    let t = CString::new(text_file).expect("invalid text file");
-    rime_levers_call!(import_user_dict, d.as_ptr(), t.as_ptr())
+pub fn import_user_dict(dict_name: &str, text_file: &str) -> anyhow::Result<i32> {
+    let d = CString::new(dict_name)?;
+    let t = CString::new(text_file)?;
+    Ok(rime_levers_call!(import_user_dict, d.as_ptr(), t.as_ptr()))
 }
 
 // --- Helpers ---
