@@ -416,17 +416,17 @@ fn run_tui(session: &Session) -> Result<()> {
     let mut output = String::new();
     let mut cursor: usize = 0;
 
+    let viewport_y = terminal.get_frame().area().y;
     let result = tui_loop(session, &mut terminal, &mut output, &mut cursor);
 
     // 恢复终端状态（此时 stdout 仍指向 /dev/tty，cursor::position() 可正常工作）
-    // terminal.clear() 将光标还原到清除前的位置（视口内某个列），
-    // 需要 \r 回到行首，避免后续输出前有多余空格
+    // terminal.clear() 清除视口内容并恢复光标到清除前的位置。
+    // 但该位置可能在视口的第 1 行或第 2 行（取决于最后一次 draw 写入内容的位置），
+    // 因此用视口起点的绝对坐标定位光标，而非相对移动。
     let cleanup = (|| -> Result<()> {
         terminal.clear()?;
-        // 回到当前行的行首并上移一行（视口 2 行，clear 后光标在第 2 行）
-        // \r = 回到行首，\x1b[1A = 光标上移 1 行
-        std::io::stdout().write_all(b"\r\x1b[1A")?;
-        std::io::stdout().flush()?;
+        // 将光标移到视口起始行行首（即 TUI 开始前的光标位置）
+        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveTo(0, viewport_y))?;
         terminal.show_cursor()?;
         Ok(())
     })();
