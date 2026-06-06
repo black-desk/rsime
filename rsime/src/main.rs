@@ -386,10 +386,11 @@ fn run_tui(session: &Session) -> Result<()> {
         .write(true)
         .open("/dev/tty")?;
 
-    // 在 /dev/tty 上设置 raw 模式（而非 stdin，因为 stdin 在 $() 中可能是管道）
     let tty_fd = tty.as_raw_fd();
 
-    // 将 stdout 重定向到 /dev/tty，使 crossterm 的光标位置查询能到达终端
+    // 将 stdout 重定向到 /dev/tty，使 crossterm 的光标位置查询（DSR \x1b[6n）能到达终端。
+    // crossterm 的 cursor::position() 通过 io::stdout()（fd 1）发送查询，而非后端的 writer，
+    // 因此整个 TUI 会话（包括清理阶段的 terminal.clear()）期间都必须保持重定向。
     // （在 $() 中，fd 1 是管道，DSR 转义序列会发送到管道而非终端）
     let saved_stdout = unsafe { libc::dup(1) };
     if saved_stdout == -1 {
@@ -398,29 +399,44 @@ fn run_tui(session: &Session) -> Result<()> {
     unsafe { libc::dup2(tty_fd, 1) };
 
     let backend = CrosstermBackend::new(tty);
-    let terminal_result = Terminal::with_options(
+    let mut terminal = match Terminal::with_options(
         backend,
         TerminalOptions {
             viewport: Viewport::Inline(2),
         },
-    );
-
-    // 恢复 stdout
-    unsafe { libc::dup2(saved_stdout, 1) };
-    unsafe { libc::close(saved_stdout) };
-
-    let mut terminal = terminal_result?;
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            unsafe { libc::dup2(saved_stdout, 1) };
+            unsafe { libc::close(saved_stdout) };
+            return Err(e.into());
+        }
+    };
 
     let mut output = String::new();
     let mut cursor: usize = 0;
 
     let result = tui_loop(session, &mut terminal, &mut output, &mut cursor);
 
-    // 恢复终端状态
-    terminal.clear()?;
-    terminal.show_cursor()?;
+    // 恢复终端状态（此时 stdout 仍指向 /dev/tty，cursor::position() 可正常工作）
+    // terminal.clear() 将光标还原到清除前的位置（视口内某个列），
+    // 需要 \r 回到行首，避免后续输出前有多余空格
+    let cleanup = (|| -> Result<()> {
+        terminal.clear()?;
+        // 回到当前行的行首并上移一行（视口 2 行，clear 后光标在第 2 行）
+        // \r = 回到行首，\x1b[1A = 光标上移 1 行
+        std::io::stdout().write_all(b"\r\x1b[1A")?;
+        std::io::stdout().flush()?;
+        terminal.show_cursor()?;
+        Ok(())
+    })();
+
+    // 清理完成，恢复 stdout 以便输出最终结果
+    unsafe { libc::dup2(saved_stdout, 1) };
+    unsafe { libc::close(saved_stdout) };
 
     result?;
+    cleanup?;
 
     if !output.is_empty() {
         println!("{}", output);
