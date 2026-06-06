@@ -79,11 +79,11 @@ fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path, target_dir: &Path) 
         .map_err(|e| format!("Failed to execute vcpkg: {e}"))?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
-            "vcpkg install failed with status: {}\n{stderr}",
-            output.status
-        ));
+            "vcpkg install failed with status: {}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+        , output.status));
     }
 
     let installed_dir = install_root.join(&triplet);
