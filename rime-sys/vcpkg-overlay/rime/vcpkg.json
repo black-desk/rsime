@@ -17,6 +17,7 @@
     "boost-scope-exit",
     "boost-signals2",
     "boost-uuid",
+    "boost-vmd",
     "glog",
     "leveldb",
     "lua",
