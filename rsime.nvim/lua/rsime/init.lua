@@ -151,6 +151,7 @@ local function handle_char()
   if ch == "7" then return end
   if ch == "8" then return end
   if ch == "9" then return end
+  if ch == "0" then return end
   send_key(ch)
   vim.v.char = ""
 end
