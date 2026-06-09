@@ -16,7 +16,8 @@ use anyhow::{bail, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
@@ -211,7 +212,7 @@ fn print_shell_bind(shell: &str, key: Option<&str>) -> Result<()> {
 stty -ixon
 rsime-widget() {{
     local output
-    output=$(rsime tui)
+    output=$(RSIME_READLINE_LINE="$READLINE_LINE" RSIME_READLINE_POINT="$READLINE_POINT" rsime tui)
     [[ -n "$output" ]] && READLINE_LINE="${{READLINE_LINE:0:$READLINE_POINT}}$output${{READLINE_LINE:$READLINE_POINT}}"
     READLINE_POINT=$(( READLINE_POINT + ${{#output}} ))
 }}
@@ -234,7 +235,7 @@ bindkey '{zsh_key}' rsime-widget"#);
             // 将 \C-q 转换为 \cq
             let fish_key = bind.to_lowercase().replace("\\c-", "\\c");
             println!(r##"# rsime TUI keybinding
-bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output"'"##);
+bind {fish_key} 'RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
         }
         _ => bail!("unsupported shell for keybinding: {shell}"),
     }
@@ -380,6 +381,21 @@ fn run_stdio(session: &Session) -> Result<()> {
     Ok(())
 }
 
+/// 从环境变量中读取 shell 传递的命令行上下文。
+/// bash 通过 RSIME_READLINE_LINE / RSIME_READLINE_POINT 传递，
+/// fish 通过同样的环境变量传递（commandline / commandline --cursor）。
+fn read_shell_context() -> Option<(String, usize)> {
+    let line = std::env::var("RSIME_READLINE_LINE").ok()?;
+    if line.is_empty() {
+        return None;
+    }
+    let point = std::env::var("RSIME_READLINE_POINT")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(line.chars().count());
+    Some((line, point))
+}
+
 fn run_tui(session: &Session) -> Result<()> {
     let tty = std::fs::OpenOptions::new()
         .read(true)
@@ -397,6 +413,12 @@ fn run_tui(session: &Session) -> Result<()> {
         return Err(std::io::Error::last_os_error().into());
     }
     unsafe { libc::dup2(tty_fd, 1) };
+
+    // 读取 shell 传递的命令行上下文
+    let shell_ctx = read_shell_context();
+    // 无论有无 shell 上下文，viewport 始终 2 行：
+    //   无上下文：preedit 行 + 候选词行
+    //   有上下文：内联 preedit 的命令行 + 候选词行
 
     let backend = CrosstermBackend::new(tty);
     let mut terminal = match Terminal::with_options(
@@ -417,11 +439,11 @@ fn run_tui(session: &Session) -> Result<()> {
     let mut cursor: usize = 0;
 
     let viewport_y = terminal.get_frame().area().y;
-    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor);
+    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor, &shell_ctx);
 
     // 恢复终端状态（此时 stdout 仍指向 /dev/tty，cursor::position() 可正常工作）
     // terminal.clear() 清除视口内容并恢复光标到清除前的位置。
-    // 但该位置可能在视口的第 1 行或第 2 行（取决于最后一次 draw 写入内容的位置），
+    // 但该位置可能在视口的任意行（取决于最后一次 draw 写入内容的位置），
     // 因此用视口起点的绝对坐标定位光标，而非相对移动。
     let cleanup = (|| -> Result<()> {
         terminal.clear()?;
@@ -449,14 +471,16 @@ fn tui_loop(
     terminal: &mut Terminal<CrosstermBackend<std::fs::File>>,
     output: &mut String,
     cursor: &mut usize,
+    shell_ctx: &Option<(String, usize)>,
 ) -> Result<()> {
     loop {
         let ctx = session.context();
-        let (preedit, candidates, _highlighted) = match &ctx {
+        let (preedit, cursor_pos, candidates, _highlighted) = match &ctx {
             Some(ctx) => {
                 let comp = ctx.composition();
                 let menu = ctx.menu();
                 let preedit = comp.preedit.unwrap_or_default();
+                let cursor_pos = comp.cursor_pos;
                 let cands: Vec<String> = menu
                     .candidates
                     .iter()
@@ -466,9 +490,9 @@ fn tui_loop(
                         format!("{}{}.{}", sel, i + 1, c.text)
                     })
                     .collect();
-                (preedit, cands, menu.highlighted_candidate_index)
+                (preedit, cursor_pos, cands, menu.highlighted_candidate_index)
             }
-            None => (String::new(), Vec::new(), 0),
+            None => (String::new(), 0, Vec::new(), 0),
         };
 
         let mut committed = String::new();
@@ -488,19 +512,42 @@ fn tui_loop(
         terminal.draw(|f| {
             let area = f.area();
 
-            let left: String = output.chars().take(*cursor).collect();
-            let right: String = output.chars().skip(*cursor).collect();
+            let out_left: String = output.chars().take(*cursor).collect();
+            let out_right: String = output.chars().skip(*cursor).collect();
 
-            let comp_line = if preedit.is_empty() && candidates.is_empty() && output.is_empty() {
+            // preedit 内部光标位置：将 | 插入到 cursor_pos 处
+            let preedit_before: String = preedit.chars().take(cursor_pos).collect();
+            let preedit_after: String = preedit.chars().skip(cursor_pos).collect();
+            let preedit_with_cursor = format!("{}|{}", preedit_before, preedit_after);
+
+            // 第一行：命令行内容
+            let comp_line = if let Some((line, point)) = shell_ctx {
+                // shell 模式：内联 preedit，用不同颜色区分已有命令和拼音输入
+                //   ❯ echo hell niha| o world
+                //   ↑          ↑ point    ↑ cursor in preedit
+                let rl_before: String = line.chars().take(*point).collect();
+                let rl_after: String = line.chars().skip(*point).collect();
+                let cmd_style = Style::default().dim();
+                let preedit_style = Style::default().fg(Color::Yellow);
+                let spans = vec![
+                    Span::styled("❯ ", cmd_style),
+                    Span::styled(rl_before, cmd_style),
+                    Span::styled(out_left, cmd_style),
+                    Span::styled(preedit_with_cursor, preedit_style),
+                    Span::styled(out_right, cmd_style),
+                    Span::styled(rl_after, cmd_style),
+                ];
+                Paragraph::new(Line::from(spans))
+            } else if preedit.is_empty() && candidates.is_empty() && output.is_empty() {
                 Paragraph::new("❯ Type pinyin, Esc to finish").dim()
             } else {
-                Paragraph::new(format!("❯ {}{}|{}", left, preedit, right))
+                Paragraph::new(format!("❯ {}{}{}", out_left, preedit_with_cursor, out_right))
             };
 
             let cand_text = candidates.join("  ");
             let cand_line = Paragraph::new(cand_text).style(Style::default());
 
-            f.render_widget(comp_line, Rect { height: 1, ..area });
+            f.render_widget(comp_line, Rect { y: area.y, height: 1, ..area });
             f.render_widget(cand_line, Rect { y: area.y + 1, height: 1, ..area });
         })?;
 
