@@ -421,6 +421,36 @@ fn parse_prompt_spans(prompt: &str) -> Vec<Span<'static>> {
         .unwrap_or_default()
 }
 
+/// 拼装 shell 模式下 TUI 第一行：
+///   prompt spans + 光标前命令 + 已提交前段 + preedit + 已提交后段 + 光标后命令
+/// preedit 用黄色+下划线标识"未提交"，其余命令/已提交文本用默认样式，prompt 保留各自颜色。
+fn build_shell_line(
+    prompt_spans: &[Span<'static>],
+    line: &str,
+    point: usize,
+    out_left: &str,
+    preedit: &str,
+    cursor_pos: usize,
+    out_right: &str,
+) -> Line<'static> {
+    let rl_before: String = line.chars().take(point).collect();
+    let rl_after: String = line.chars().skip(point).collect();
+    let preedit_before: String = preedit.chars().take(cursor_pos).collect();
+    let preedit_after: String = preedit.chars().skip(cursor_pos).collect();
+    let preedit_style = Style::default().fg(Color::Yellow).underlined();
+    let plain = Style::default();
+
+    let mut spans: Vec<Span<'static>> = prompt_spans.to_vec();
+    spans.push(Span::styled(rl_before, plain));
+    spans.push(Span::styled(out_left.to_string(), plain));
+    spans.push(Span::styled(preedit_before, preedit_style));
+    spans.push(Span::raw("|"));
+    spans.push(Span::styled(preedit_after, preedit_style));
+    spans.push(Span::styled(out_right.to_string(), plain));
+    spans.push(Span::styled(rl_after, plain));
+    Line::from(spans)
+}
+
 fn run_tui(session: &Session) -> Result<()> {
     let tty = std::fs::OpenOptions::new()
         .read(true)
@@ -746,5 +776,33 @@ mod prompt_tests {
     fn parse_prompt_empty_returns_empty() {
         let spans = parse_prompt_spans("");
         assert!(spans_text(&spans).is_empty());
+    }
+
+    #[test]
+    fn build_shell_line_assembles_parts() {
+        let prompt = vec![Span::raw("host> ")];
+        // 命令 "cd rsime"，readline 光标在 col 2（"cd" 之后）
+        // 已提交 out="AB"，rsime 光标在 1（out_left="A" out_right="B"）
+        // preedit "niha"，composition 光标在 2（"ni" 之后）
+        let line = build_shell_line(&prompt, "cd rsime", 2, "A", "niha", 2, "B");
+        // host> + "cd" + "A" + "ni" + "|" + "ha" + "B" + " rsime"
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, "host> cdAni|haB rsime");
+    }
+
+    #[test]
+    fn build_shell_line_preedit_is_styled_yellow_underlined() {
+        let prompt = vec![Span::raw("> ")];
+        let line = build_shell_line(&prompt, "", 0, "", "ni", 2, "");
+        let preedit_span = line
+            .spans
+            .iter()
+            .find(|s| s.content.as_ref() == "ni")
+            .expect("preedit span present");
+        assert_eq!(preedit_span.style.fg, Some(Color::Yellow));
+        assert!(preedit_span
+            .style
+            .add_modifier
+            .contains(ratatui::style::Modifier::UNDERLINED));
     }
 }
