@@ -224,7 +224,7 @@ bind -x '"{bind}": rsime-widget'"#);
             println!(r#"# rsime TUI keybinding
 rsime-widget() {{
     local output
-    output=$(rsime tui)
+    output=$(RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
     [[ -n "$output" ]] && LBUFFER+="$output"
     zle reset-prompt
 }}
@@ -382,8 +382,9 @@ fn run_stdio(session: &Session) -> Result<()> {
 }
 
 /// 从环境变量中读取 shell 传递的命令行上下文。
-/// bash 通过 RSIME_READLINE_LINE / RSIME_READLINE_POINT 传递，
-/// fish 通过同样的环境变量传递（commandline / commandline --cursor）。
+/// bash（$READLINE_LINE/$READLINE_POINT）、zsh（$BUFFER/$CURSOR）
+/// 和 fish（commandline/commandline --cursor）的快捷键绑定都会把
+/// 命令行内容与光标位置传入这两个环境变量。
 fn read_shell_context() -> Option<(String, usize)> {
     let line = std::env::var("RSIME_READLINE_LINE").ok()?;
     if line.is_empty() {
