@@ -421,6 +421,16 @@ fn parse_prompt_spans(prompt: &str) -> Vec<Span<'static>> {
         .unwrap_or_default()
 }
 
+/// 从 RSIME_PROMPT 环境变量读取 shell 渲染好的 prompt 并解析成 spans。
+/// 缺失或为空时返回 None（回退到非 shell 模式）。
+fn read_shell_prompt() -> Option<Vec<Span<'static>>> {
+    let prompt = std::env::var("RSIME_PROMPT").ok()?;
+    if prompt.is_empty() {
+        return None;
+    }
+    Some(parse_prompt_spans(&prompt))
+}
+
 /// 拼装 shell 模式下 TUI 第一行：
 ///   prompt spans + 光标前命令 + 已提交前段 + preedit + 已提交后段 + 光标后命令
 /// preedit 用黄色+下划线标识"未提交"，其余命令/已提交文本用默认样式，prompt 保留各自颜色。
@@ -471,6 +481,7 @@ fn run_tui(session: &Session) -> Result<()> {
 
     // 读取 shell 传递的命令行上下文
     let shell_ctx = read_shell_context();
+    let prompt = read_shell_prompt();
     // 无论有无 shell 上下文，viewport 始终 2 行：
     //   无上下文：preedit 行 + 候选词行
     //   有上下文：内联 preedit 的命令行 + 候选词行
@@ -494,7 +505,7 @@ fn run_tui(session: &Session) -> Result<()> {
     let mut cursor: usize = 0;
 
     let viewport_y = terminal.get_frame().area().y;
-    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor, &shell_ctx);
+    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor, &shell_ctx, &prompt);
 
     // 恢复终端状态（此时 stdout 仍指向 /dev/tty，cursor::position() 可正常工作）
     // terminal.clear() 清除视口内容并恢复光标到清除前的位置。
@@ -527,6 +538,7 @@ fn tui_loop(
     output: &mut String,
     cursor: &mut usize,
     shell_ctx: &Option<(String, usize)>,
+    prompt: &Option<Vec<Span<'static>>>,
 ) -> Result<()> {
     loop {
         let ctx = session.context();
@@ -576,10 +588,23 @@ fn tui_loop(
             let preedit_with_cursor = format!("{}|{}", preedit_before, preedit_after);
 
             // 第一行：命令行内容
-            let comp_line = if let Some((line, point)) = shell_ctx {
-                // shell 模式：内联 preedit，用不同颜色区分已有命令和拼音输入
-                //   ❯ echo hell niha| o world
-                //   ↑          ↑ point    ↑ cursor in preedit
+            let comp_line = if let Some(prompt_spans) = prompt {
+                // shell 模式（真实 prompt）：prompt spans + 命令 + 内联 preedit
+                let (line, point) = shell_ctx
+                    .as_ref()
+                    .map(|(l, p)| (l.as_str(), *p))
+                    .unwrap_or(("", 0));
+                Paragraph::new(build_shell_line(
+                    prompt_spans,
+                    line,
+                    point,
+                    &out_left,
+                    &preedit,
+                    cursor_pos,
+                    &out_right,
+                ))
+            } else if let Some((line, point)) = shell_ctx {
+                // 旧的内联模式（无 RSIME_PROMPT，向后兼容）：❯ + 命令 + preedit
                 let rl_before: String = line.chars().take(*point).collect();
                 let rl_after: String = line.chars().skip(*point).collect();
                 let cmd_style = Style::default().dim();
