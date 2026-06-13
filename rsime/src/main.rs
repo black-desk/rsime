@@ -21,6 +21,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
+use ansi_to_tui::IntoText;
 use rsime::rime::{
     deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
@@ -397,6 +398,29 @@ fn read_shell_context() -> Option<(String, usize)> {
     Some((line, point))
 }
 
+/// 把 shell 传来的渲染后 prompt（带 ANSI 颜色码）解析成 ratatui 的带样式 spans，
+/// 取最后一个非空行（多行 prompt 只用光标所在的最后一行）。
+/// 解析失败时退化为纯文本最后一行。
+fn parse_prompt_spans(prompt: &str) -> Vec<Span<'static>> {
+    let text = match prompt.into_text() {
+        Ok(text) => text,
+        Err(_) => {
+            let last = prompt
+                .lines()
+                .rev()
+                .find(|l| !l.is_empty())
+                .unwrap_or("");
+            return vec![Span::raw(last.to_string())];
+        }
+    };
+    text.lines
+        .iter()
+        .rev()
+        .find(|line| line.spans.iter().any(|s| !s.content.is_empty()))
+        .map(|line| line.spans.clone())
+        .unwrap_or_default()
+}
+
 fn run_tui(session: &Session) -> Result<()> {
     let tty = std::fs::OpenOptions::new()
         .read(true)
@@ -676,5 +700,51 @@ fn main() -> Result<()> {
             finalize();
             result
         }
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    fn spans_text(spans: &[Span]) -> String {
+        spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn parse_prompt_plain_text() {
+        let spans = parse_prompt_spans("host> ");
+        assert_eq!(spans_text(&spans), "host> ");
+    }
+
+    #[test]
+    fn parse_prompt_keeps_color() {
+        // green "foo", reset, then " bar"
+        let spans = parse_prompt_spans("\x1b[32mfoo\x1b[0m bar");
+        assert_eq!(spans_text(&spans), "foo bar");
+        assert!(
+            spans.iter().any(|s| s.style.fg == Some(Color::Green)),
+            "green color should be preserved"
+        );
+    }
+
+    #[test]
+    fn parse_prompt_multiline_takes_last_line() {
+        let spans = parse_prompt_spans("line one\n> ");
+        assert_eq!(spans_text(&spans), "> ");
+    }
+
+    #[test]
+    fn parse_prompt_trailing_newline() {
+        // fish 可能输出尾部换行；取最后一个非空行
+        let spans = parse_prompt_spans("host> \n");
+        assert_eq!(spans_text(&spans), "host> ");
+    }
+
+    #[test]
+    fn parse_prompt_empty_returns_empty() {
+        let spans = parse_prompt_spans("");
+        assert!(spans_text(&spans).is_empty());
     }
 }
