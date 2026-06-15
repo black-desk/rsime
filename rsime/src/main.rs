@@ -243,6 +243,19 @@ bind {fish_key} 'RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(command
     Ok(())
 }
 
+/// 解析 "major.minor" 形式的 bash 版本字符串。
+fn parse_bash_version(ver: &str) -> (u32, u32) {
+    let mut parts = ver.split('.');
+    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    (major, minor)
+}
+
+/// ${PS1@P}（prompt 展开）需要 bash >= 4.4。
+fn bash_supports_prompt_expansion(major: u32, minor: u32) -> bool {
+    (major, minor) >= (4, 4)
+}
+
 fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
     use clap_complete::Shell;
 
@@ -254,12 +267,13 @@ fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
         if matches!(sh, Shell::Bash) {
             let output = Command::new("bash")
                 .arg("-c")
-                .arg("echo \"${BASH_VERSINFO[0]}\"")
+                .arg("echo \"${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}\"")
                 .output()?;
-            let major = String::from_utf8_lossy(&output.stdout).trim().parse::<u32>().unwrap_or(0);
-            if major < 4 {
+            let (major, minor) =
+                parse_bash_version(String::from_utf8_lossy(&output.stdout).trim());
+            if !bash_supports_prompt_expansion(major, minor) {
                 bail!(
-                    "bash {major} does not support bind -x with READLINE_LINE (requires bash >= 4).\n\
+                    "bash {major}.{minor} does not support ${{PS1@P}} prompt expansion (requires bash >= 4.4).\n\
                      Consider using zsh or fish, or installing a newer bash via Homebrew."
                 );
             }
@@ -829,5 +843,29 @@ mod prompt_tests {
             .style
             .add_modifier
             .contains(ratatui::style::Modifier::UNDERLINED));
+    }
+}
+
+#[cfg(test)]
+mod bash_version_tests {
+    use super::*;
+
+    #[test]
+    fn parse_bash_version_works() {
+        assert_eq!(parse_bash_version("5.2"), (5, 2));
+        assert_eq!(parse_bash_version("4.4"), (4, 4));
+        assert_eq!(parse_bash_version("3.2"), (3, 2));
+        assert_eq!(parse_bash_version("garbage"), (0, 0));
+        assert_eq!(parse_bash_version("5"), (5, 0));
+    }
+
+    #[test]
+    fn ps1_at_p_support_threshold() {
+        assert!(!bash_supports_prompt_expansion(3, 2));
+        assert!(!bash_supports_prompt_expansion(4, 0));
+        assert!(!bash_supports_prompt_expansion(4, 3));
+        assert!(bash_supports_prompt_expansion(4, 4));
+        assert!(bash_supports_prompt_expansion(5, 0));
+        assert!(bash_supports_prompt_expansion(5, 2));
     }
 }
