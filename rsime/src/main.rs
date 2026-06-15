@@ -213,7 +213,7 @@ fn print_shell_bind(shell: &str, key: Option<&str>) -> Result<()> {
 stty -ixon
 rsime-widget() {{
     local output
-    output=$(RSIME_READLINE_LINE="$READLINE_LINE" RSIME_READLINE_POINT="$READLINE_POINT" rsime tui)
+    output=$(RSIME_PROMPT="${{PS1@P}}" RSIME_READLINE_LINE="$READLINE_LINE" RSIME_READLINE_POINT="$READLINE_POINT" rsime tui)
     [[ -n "$output" ]] && READLINE_LINE="${{READLINE_LINE:0:$READLINE_POINT}}$output${{READLINE_LINE:$READLINE_POINT}}"
     READLINE_POINT=$(( READLINE_POINT + ${{#output}} ))
 }}
@@ -225,7 +225,7 @@ bind -x '"{bind}": rsime-widget'"#);
             println!(r#"# rsime TUI keybinding
 rsime-widget() {{
     local output
-    output=$(RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
+    output=$(RSIME_PROMPT="${{(%)PROMPT}}" RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
     [[ -n "$output" ]] && LBUFFER+="$output"
     zle reset-prompt
 }}
@@ -236,7 +236,7 @@ bindkey '{zsh_key}' rsime-widget"#);
             // 将 \C-q 转换为 \cq
             let fish_key = bind.to_lowercase().replace("\\c-", "\\c");
             println!(r##"# rsime TUI keybinding
-bind {fish_key} 'RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
+bind {fish_key} 'RSIME_PROMPT=(fish_prompt) RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
         }
         _ => bail!("unsupported shell for keybinding: {shell}"),
     }
