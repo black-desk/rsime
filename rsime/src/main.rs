@@ -412,10 +412,43 @@ fn read_shell_context() -> Option<(String, usize)> {
     Some((line, point))
 }
 
+/// 剥掉 ansi-to-tui 处理不了的转义序列。
+///
+/// ansi-to-tui 只认 `ESC[`（CSI）和 `ESC]`（OSC）。对其它转义（最典型的是 fish 的
+/// 字符集指定 `ESC(B`），它只吞掉 `ESC`、把后续字节当字面量，于是出现 `(B` 残留。
+/// 这里把这些非 CSI/OSC 转义（`ESC` + 中间字节 `0x20..0x2f`* + 终止字节 `0x30..0x7e`）
+/// 整段删掉，SGR（`ESC[...m`）与 OSC（`ESC]...`）原样保留交给 ansi-to-tui。
+fn strip_unhandled_escapes(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0x1b
+            && i + 1 < bytes.len()
+            && bytes[i + 1] != b'['
+            && bytes[i + 1] != b']'
+        {
+            // 非 CSI/OSC 转义：跳过 ESC + 中间字节 + 一个终止字节
+            i += 1; // ESC
+            while i < bytes.len() && (0x20..=0x2f).contains(&bytes[i]) {
+                i += 1; // 中间字节
+            }
+            if i < bytes.len() && (0x30..=0x7e).contains(&bytes[i]) {
+                i += 1; // 终止字节
+            }
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// 把 shell 传来的渲染后 prompt（带 ANSI 颜色码）解析成 ratatui 的带样式 spans，
 /// 取最后一个非空行（多行 prompt 只用光标所在的最后一行）。
 /// 解析失败时退化为纯文本最后一行。
 fn parse_prompt_spans(prompt: &str) -> Vec<Span<'static>> {
+    let prompt = strip_unhandled_escapes(prompt);
     let text = match prompt.into_text() {
         Ok(text) => text,
         Err(_) => {
@@ -496,6 +529,24 @@ fn run_tui(session: &Session) -> Result<()> {
     // 读取 shell 传递的命令行上下文
     let shell_ctx = read_shell_context();
     let prompt = read_shell_prompt();
+    // 诊断日志：便于排查各 shell 传参与 prompt 解析
+    log(&format!(
+        "shell_ctx: line={:?} point={:?}; prompt_some={}",
+        shell_ctx.as_ref().map(|(l, _)| l.as_str()),
+        shell_ctx.as_ref().map(|(_, p)| *p),
+        prompt.is_some(),
+    ));
+    if let Ok(v) = std::env::var("RSIME_PROMPT") {
+        log(&format!(
+            "RSIME_PROMPT raw ({} chars) = {:?}",
+            v.chars().count(),
+            v
+        ));
+    }
+    if let Some(spans) = &prompt {
+        let t: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        log(&format!("parsed prompt spans ({}): text={:?}", spans.len(), t));
+    }
     // 无论有无 shell 上下文，viewport 始终 2 行：
     //   无上下文：preedit 行 + 候选词行
     //   有上下文：内联 preedit 的命令行 + 候选词行
@@ -843,6 +894,29 @@ mod prompt_tests {
             .style
             .add_modifier
             .contains(ratatui::style::Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn strip_unhandled_escapes_removes_charset_designation() {
+        // fish 的字符集指定 ESC(B；SGR（ESC[92m / ESC[m）必须保留
+        let s = strip_unhandled_escapes("\x1b[92mfoo\x1b(B\x1b[m bar");
+        assert_eq!(s, "\x1b[92mfoo\x1b[m bar");
+    }
+
+    #[test]
+    fn strip_unhandled_escapes_keeps_csi_and_osc() {
+        // CSI 与 OSC 原样保留，交给 ansi-to-tui
+        let s = strip_unhandled_escapes("\x1b[31ma\x1b]0;title\x07b");
+        assert_eq!(s, "\x1b[31ma\x1b]0;title\x07b");
+    }
+
+    #[test]
+    fn parse_prompt_handles_fish_charset_escape() {
+        // 真实 fish prompt 片段（含多处 ESC(B），不应有 "(B" 残留
+        let spans = parse_prompt_spans("\x1b[92mblack_desk\x1b(B\x1b[m@\x1b[32m~/D\x1b(B\x1b[m> ");
+        let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, "black_desk@~/D> ");
+        assert!(!text.contains("(B"), "no (B leak");
     }
 }
 
