@@ -224,8 +224,12 @@ bind -x '"{bind}": rsime-widget'"#);
             let zsh_key = bind.replace("\\C-", "^").replace("\\e", "^[").replace('\\', "");
             println!(r#"# rsime TUI keybinding
 rsime-widget() {{
-    local output
-    output=$(RSIME_PROMPT="${{(%)PROMPT}}" RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
+    local output _rp
+    # 完整渲染 prompt：(e) 先执行 prompt_subst（${{...}}/$((...))/函数调用，Powerlevel10k 等靠它），
+    # 再 (%) 做 % 码展开。${{(%):-...}} 用 subst 展开取结果，去掉尾部换行。
+    _rp=${{(%):-${{(e)PROMPT}}}}
+    _rp=${{_rp%$'\n'}}
+    output=$(RSIME_PROMPT="$_rp" RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
     [[ -n "$output" ]] && LBUFFER+="$output"
     zle reset-prompt
 }}

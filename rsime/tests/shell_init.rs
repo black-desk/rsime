@@ -22,10 +22,13 @@ fn shell_init_stdout(shell: &str) -> String {
 #[test]
 fn zsh_binding_passes_prompt() {
     let out = shell_init_stdout("zsh");
+    // 绑定用 (e)+(%) 完整渲染 prompt（含 prompt_subst，支持 Powerlevel10k），
+    // 渲染结果存入 $_rp 后传给 RSIME_PROMPT。
     assert!(
-        out.contains(r#"RSIME_PROMPT="${(%)PROMPT}""#),
-        "zsh binding should pass RSIME_PROMPT, got:\n{out}"
+        out.contains(r#"RSIME_PROMPT="$_rp""#),
+        "zsh binding should pass RSIME_PROMPT from rendered $_rp, got:\n{out}"
     );
+    assert!(out.contains("${(%):-${(e)PROMPT}}"));
     assert!(out.contains(r#"RSIME_READLINE_LINE="$BUFFER""#));
 }
 
