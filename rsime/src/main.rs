@@ -400,9 +400,16 @@ fn run_stdio(session: &Session) -> Result<()> {
 /// bash（$READLINE_LINE/$READLINE_POINT）、zsh（$BUFFER/$CURSOR）
 /// 和 fish（commandline/commandline --cursor）的快捷键绑定都会把
 /// 命令行内容与光标位置传入这两个环境变量。
+///
+/// 命令行为空（在空命令行上触发）时，若绑定了 RSIME_PROMPT 则仍返回空命令
+/// 上下文（point=0），让真实 prompt 能正常渲染；否则返回 None 退回独立模式。
 fn read_shell_context() -> Option<(String, usize)> {
     let line = std::env::var("RSIME_READLINE_LINE").ok()?;
+    // 空命令行：若没有 shell prompt，退回独立模式；若有，返回空命令上下文
     if line.is_empty() {
+        if std::env::var("RSIME_PROMPT").map(|v| !v.is_empty()).unwrap_or(false) {
+            return Some((String::new(), 0));
+        }
         return None;
     }
     let point = std::env::var("RSIME_READLINE_POINT")
@@ -536,6 +543,12 @@ fn run_tui(session: &Session) -> Result<()> {
         shell_ctx.as_ref().map(|(_, p)| *p),
         prompt.is_some(),
     ));
+    if let Ok(v) = std::env::var("RSIME_READLINE_LINE") {
+        log(&format!("RSIME_READLINE_LINE raw ({} chars) = {:?}", v.chars().count(), v));
+    }
+    if let Ok(v) = std::env::var("RSIME_READLINE_POINT") {
+        log(&format!("RSIME_READLINE_POINT raw = {:?}", v));
+    }
     if let Ok(v) = std::env::var("RSIME_PROMPT") {
         log(&format!(
             "RSIME_PROMPT raw ({} chars) = {:?}",
