@@ -20,6 +20,7 @@ rsime/                     # Cargo workspace（resolver 3）
 │   │   ├── rime.rs        # librime 安全封装（Session/Config/Levers API 等）
 │   │   └── main.rs        # CLI 入口（#[cfg(feature = "cli")]）
 │   └── tests/
+│       ├── shell_init.rs  # shell 快捷键绑定集成测试
 │       └── stdio.rs       # stdio 集成测试
 ├── rime-sys/              # FFI 绑定 crate
 │   ├── build.rs           # bindgen + pkg-config / vcpkg
@@ -60,9 +61,42 @@ CLI 子命令：
 
 Feature flags：
 
-- `cli`（可选）— 启用 CLI 二进制，引入 clap、crossterm、ratatui、ureq 依赖
+- `cli`（可选）— 启用 CLI 二进制，引入 clap、crossterm、ratatui、ansi-to-tui、ureq 依赖
 - `bundled-vcpkg`（可选）— 转发到 `rime-sys/bundled-vcpkg`，自动编译 librime。
   用户需预装 vcpkg（设置 `VCPKG_ROOT` 或 `vcpkg` 在 `PATH` 中）
+
+### TUI 模式与 shell 集成
+
+`tui` 子命令的 Inline 视口（`Viewport::Inline(2)`）会把 preedit **内联渲染进 shell
+的真实 prompt**（保留 prompt 及其颜色），而不是用 rsime 自带的占位符 `❯`。支持
+bash、zsh、fish，三者的 prompt 渲染与命令行上下文各不相同，由 `shell-init --bind`
+生成的快捷键绑定统一传入。
+
+**环境变量（shell 绑定 → rsime）：**
+
+- `RSIME_PROMPT` — shell 已渲染好的 prompt（含 ANSI 颜色码）。rsime 用 `ansi-to-tui`
+  解析成 ratatui spans，只取最后一行与 preedit 拼接（多行 prompt 只画最后一行）
+  - bash：`${PS1@P}`（需 bash ≥ 4.4，`shell-init` 会做版本门控）
+  - zsh：`${(%):-${(e)PROMPT}}`（`(e)` 跑 prompt_subst 以支持 Powerlevel10k，
+    `(%)` 做 `%` 码展开）
+  - fish：`(fish_prompt)`
+- `RSIME_READLINE_LINE` / `RSIME_READLINE_POINT` — 当前命令行内容与光标位置
+  （bash `$READLINE_LINE/$READLINE_POINT`、zsh `$BUFFER/$CURSOR`、
+  fish `commandline`/`commandline --cursor`）
+
+**`RSIME_RESTORE_PROMPT`（行为开关，仅 fish 绑定设为 1）：** rsime 的视口每帧覆盖 prompt
+最后一行，退出时 `terminal.clear()` 会把它清掉。bash（`rl_forced_update_display`）、
+zsh（`zle reset-prompt`）退出后会自行全量重绘 prompt，无需 rsime 处理；但 fish 做的是
+基于内部屏幕模型的**差分重绘**，屏幕被清空后模型与实际不一致会错位（候选字画到行首、
+prompt 丢失）。因此设了该开关时，rsime 在退出前把 prompt 最后一行 + 原命令行画回视口
+起始行，恢复 rsime 启动前的屏幕状态。
+
+> 设计上是**行为开关而非 shell 身份标识**：rsime 不认 shell 名字，任何差分重绘的 shell
+> 设这个开关即可。默认不恢复（对全量重绘的 shell 安全）。逻辑见 `run_tui` 的 cleanup
+> 段，绑定与集成测试见 `print_shell_bind` 与 `tests/shell_init.rs`。
+
+**fish 的 `ESC(B`：** fish `set_color` 会发出 G0 字符集指定序列 `ESC(B`，`ansi-to-tui`
+无法处理会当字面量留下，`strip_unhandled_escapes()` 在解析前剥掉这类非 SGR 转义。
 
 ### rime.rs 安全封装
 
@@ -130,6 +164,8 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 
 - `run_tui` 中使用 `libc::dup/dup2` 重定向 stdout 到 `/dev/tty`，以便在 `$()`
   子 shell 中工作时 crossterm 的光标查询能到达终端
+- TUI 诊断日志：设置 `RSIME_LOG=<文件路径>` 环境变量（或 `--log`）会输出每帧绘制、
+  按键事件、commit、最终 stdout 输出等信息，排查 shell 集成问题时无需改动绑定即可开启
 - `install_cmd` 通过 HTTP 下载 plum 脚本并 pipe 给 bash，需要网络和 git
 - Rust edition 2024，workspace resolver 3，`clap` derive 模式，`clap_complete` 生成 shell 补全
 - `cli` feature 默认未启用，构建 CLI 需 `cargo build --features cli`

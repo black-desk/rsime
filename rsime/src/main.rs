@@ -240,7 +240,7 @@ bindkey '{zsh_key}' rsime-widget"#);
             // 将 \C-q 转换为 \cq
             let fish_key = bind.to_lowercase().replace("\\c-", "\\c");
             println!(r##"# rsime TUI keybinding
-bind {fish_key} 'RSIME_PROMPT=(fish_prompt) RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
+bind {fish_key} 'RSIME_RESTORE_PROMPT=1 RSIME_PROMPT=(fish_prompt) RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
         }
         _ => bail!("unsupported shell for keybinding: {shell}"),
     }
@@ -540,6 +540,20 @@ fn run_tui(session: &Session) -> Result<()> {
     // 读取 shell 传递的命令行上下文
     let shell_ctx = read_shell_context();
     let prompt = read_shell_prompt();
+    // 是否需要 rsime 在退出时把覆盖掉的 prompt 画回屏幕。由做差分重绘、不会在 rsime
+    // 退出后自行全量重绘 prompt 的 shell（如 fish）通过 RSIME_RESTORE_PROMPT=1 显式开启。
+    // 做全量重绘的 shell（bash 的 rl_forced_update_display、zsh 的 zle reset-prompt）
+    // 不设置该变量（默认不恢复），否则会和它们的重绘叠加导致重复。
+    // 这是个行为开关而非 shell 身份标识：任何差分重绘的 shell 都能设置它，无需 rsime 认名字。
+    let restore_prompt = std::env::var("RSIME_RESTORE_PROMPT")
+        .map(|v| !v.is_empty() && v != "0")
+        .unwrap_or(false);
+    // 原始 prompt 字符串（含 ANSI 颜色码）。仅在 RSIME_RESTORE_PROMPT=1 时用于把覆盖掉的
+    // 最后一行 prompt 画回屏幕——见下方 cleanup 的说明。
+    let raw_prompt = std::env::var("RSIME_PROMPT")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim_end_matches(['\n', '\r']).to_owned());
     // 诊断日志：便于排查各 shell 传参与 prompt 解析
     log(&format!(
         "shell_ctx: line={:?} point={:?}; prompt_some={}",
@@ -597,6 +611,27 @@ fn run_tui(session: &Session) -> Result<()> {
         terminal.clear()?;
         // 将光标移到视口起始行行首（即 TUI 开始前的光标位置）
         crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveTo(0, viewport_y))?;
+        // 仅当调用方通过 RSIME_RESTORE_PROMPT=1 请求时：rsime 的 Inline 视口覆盖了
+        // prompt 的最后一行，terminal.clear() 之后那行也被清掉。做差分重绘的 shell
+        //（如 fish）依赖其内部屏幕模型，若实际屏幕与模型不一致就会出现候选字画到行首、
+        // prompt 丢失等错位（见 bug 报告：两个「测试」、prompt 消失）。退出前把 prompt
+        // 最后一行 + 原命令行画回视口起始行，让屏幕恢复到 rsime 启动前的状态即可。
+        // 注意只画最后一行：多行 prompt 中 rsime 只覆盖了最后一行，更上面的行未被触碰；
+        // 画整段 prompt 会把它们错位重排。
+        // 做全量重绘的 shell（bash、zsh）不应设置 RSIME_RESTORE_PROMPT：它们退出后会自己
+        // 全量重绘，rsime 再画一遍会和它们叠加导致重复。
+        if restore_prompt {
+            if let Some(prompt) = raw_prompt.as_ref() {
+                let last_line = prompt.rsplit('\n').next().unwrap_or("");
+                let line = shell_ctx.as_ref().map(|(l, _)| l.as_str()).unwrap_or("");
+                crossterm::execute!(
+                    std::io::stdout(),
+                    crossterm::style::Print(last_line),
+                    crossterm::style::Print(line),
+                )?;
+                log("cleanup: restored last prompt line + command line (RSIME_RESTORE_PROMPT)");
+            }
+        }
         terminal.show_cursor()?;
         Ok(())
     })();

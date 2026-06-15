@@ -37,6 +37,11 @@ fn fish_binding_passes_prompt() {
     let out = shell_init_stdout("fish");
     assert!(out.contains("RSIME_PROMPT=(fish_prompt)"));
     assert!(out.contains("RSIME_READLINE_LINE=(commandline)"));
+    // fish 做差分重绘，需要 rsime 退出时把覆盖掉的 prompt 画回去，故设置 RSIME_RESTORE_PROMPT=1。
+    assert!(
+        out.contains("RSIME_RESTORE_PROMPT=1"),
+        "fish binding should set RSIME_RESTORE_PROMPT=1 (rsime restores the prompt only when asked), got:\n{out}"
+    );
 }
 
 /// bash 的 shell-init 会先做版本门控（系统 bash < 4.4 会 bail）。
@@ -66,5 +71,11 @@ fn bash_binding_passes_prompt() {
     assert!(
         out.contains(r#"RSIME_PROMPT="${PS1@P}""#),
         "bash binding should pass RSIME_PROMPT, got:\n{out}"
+    );
+    // bash 退出后会全量重绘 prompt（rl_forced_update_display），不应设置
+    // RSIME_RESTORE_PROMPT——否则 rsime 画一遍再被 readline 画一遍会重复。
+    assert!(
+        !out.contains("RSIME_RESTORE_PROMPT"),
+        "bash binding must NOT set RSIME_RESTORE_PROMPT (bash repaints itself), got:\n{out}"
     );
 }
