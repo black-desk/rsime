@@ -608,6 +608,7 @@ fn run_tui(session: &Session) -> Result<()> {
     result?;
     cleanup?;
 
+    log(&format!("FINAL output to stdout = {:?}", output));
     if !output.is_empty() {
         println!("{}", output);
     }
@@ -622,7 +623,7 @@ fn tui_loop(
     shell_ctx: &Option<(String, usize)>,
     prompt: &Option<Vec<Span<'static>>>,
 ) -> Result<()> {
-    let mut logged_first_frame = false;
+    let mut frame = 0u32;
     loop {
         let ctx = session.context();
         let (preedit, cursor_pos, candidates, _highlighted) = match &ctx {
@@ -657,6 +658,10 @@ fn tui_loop(
                 .unwrap_or(output.len());
             output.insert_str(byte_pos, &committed);
             *cursor += committed.chars().count();
+            log(&format!(
+                "commit: {:?} -> output={:?} cursor={}",
+                committed, output, cursor
+            ));
         }
 
         terminal.draw(|f| {
@@ -713,19 +718,18 @@ fn tui_loop(
             f.render_widget(comp_line, Rect { y: area.y, height: 1, ..area });
             f.render_widget(cand_line, Rect { y: area.y + 1, height: 1, ..area });
 
-            // 首帧诊断：记录视口位置、各段内容，排查"行消失/错位"
-            if !logged_first_frame {
-                log(&format!(
-                    "draw area y={} h={} w={}: preedit={:?} cursor_pos={} cands={} output={:?} cursor={}",
-                    area.y, area.height, area.width,
-                    preedit, cursor_pos, candidates.len(), output, cursor,
-                ));
-                logged_first_frame = true;
-            }
+            // 每帧诊断：记录视口位置、各段内容，排查"行消失/重复"
+            log(&format!(
+                "draw f={} y={} h={}: preedit={:?} cp={} cands={} output={:?} cursor={}",
+                frame, area.y, area.height,
+                preedit, cursor_pos, candidates.len(), output, cursor,
+            ));
+            frame += 1;
         })?;
 
         let char_count = output.chars().count();
         let ev = event::read()?;
+        log(&format!("event: {:?}", ev));
         match ev {
             Event::Key(key) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
