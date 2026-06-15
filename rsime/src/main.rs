@@ -777,6 +777,12 @@ fn main() -> Result<()> {
     if let Some(path) = &cli.log {
         let file = File::create(path)?;
         *LOG_FILE.lock().unwrap() = Some(file);
+    } else if let Ok(path) = std::env::var("RSIME_LOG") {
+        // 便于从 shell 快捷键绑定里开启日志（无需改绑定里的 rsime tui 调用）
+        if !path.is_empty() {
+            let file = File::create(&path)?;
+            *LOG_FILE.lock().unwrap() = Some(file);
+        }
     }
 
     match cli.command {
