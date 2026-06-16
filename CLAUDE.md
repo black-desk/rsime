@@ -61,42 +61,50 @@ CLI 子命令：
 
 Feature flags：
 
-- `cli`（可选）— 启用 CLI 二进制，引入 clap、crossterm、ratatui、ansi-to-tui、ureq 依赖
+- `cli`（可选）— 启用 CLI 二进制，引入 clap、crossterm、ratatui、ureq 依赖
 - `bundled-vcpkg`（可选）— 转发到 `rime-sys/bundled-vcpkg`，自动编译 librime。
   用户需预装 vcpkg（设置 `VCPKG_ROOT` 或 `vcpkg` 在 `PATH` 中）
 
 ### TUI 模式与 shell 集成
 
-`tui` 子命令的 Inline 视口（`Viewport::Inline(2)`）会把 preedit **内联渲染进 shell
-的真实 prompt**（保留 prompt 及其颜色），而不是用 rsime 自带的占位符 `❯`。支持
-bash、zsh、fish，三者的 prompt 渲染与命令行上下文各不相同，由 `shell-init --bind`
-生成的快捷键绑定统一传入。
+`tui` 子命令在 **prompt 下方独立画 2 行**（组合行 + 候选行），完全不触碰 shell 的
+prompt 行。rsime 不读取任何命令行上下文——它在自己的输入区里独立合成中文，退出时把
+提交结果打印到 stdout，由各 shell 用原生变量插到光标处。支持 bash、zsh、fish。
 
-**环境变量（shell 绑定 → rsime）：**
+**工作原理：** ratatui 的 `Viewport::Inline(N)` 把视口第 0 行锚定在创建终端时的光标
+所在行（`compute_inline_size`）。`run_tui` 在创建 `Terminal` 前先发一个换行 `\n`，把
+光标从 prompt 行下移到其下一行，于是视口锚定在 prompt 下方，prompt 行落在视口上方、
+由 ratatui 差分渲染保护，从不被覆盖。退出时 `terminal.clear()` 只清 prompt 下方的两行
+视口，再 `MoveTo(0, viewport_y - 1)` 把光标移回 prompt 行。
 
-- `RSIME_PROMPT` — shell 已渲染好的 prompt（含 ANSI 颜色码）。rsime 用 `ansi-to-tui`
-  解析成 ratatui spans，只取最后一行与 preedit 拼接（多行 prompt 只画最后一行）
-  - bash：`${PS1@P}`（需 bash ≥ 4.4，`shell-init` 会做版本门控）
-  - zsh：`${(%):-${(e)PROMPT}}`（`(e)` 跑 prompt_subst 以支持 Powerlevel10k，
-    `(%)` 做 `%` 码展开）
-  - fish：`(fish_prompt)`
-- `RSIME_READLINE_LINE` / `RSIME_READLINE_POINT` — 当前命令行内容与光标位置
-  （bash `$READLINE_LINE/$READLINE_POINT`、zsh `$BUFFER/$CURSOR`、
-  fish `commandline`/`commandline --cursor`）
+**环境变量：** 无。shell 绑定不再向 rsime 传任何上下文（旧版的 `RSIME_PROMPT` /
+`RSIME_READLINE_LINE` / `RSIME_READLINE_POINT` / `RSIME_RESTORE_PROMPT` 已全部移除，
+`ansi-to-tui` 依赖、prompt ANSI 解析、fish `ESC(B` 剥离、bash `${PS1@P}` 版本门控等
+也随之删除）。
 
-**`RSIME_RESTORE_PROMPT`（行为开关，仅 fish 绑定设为 1）：** rsime 的视口每帧覆盖 prompt
-最后一行，退出时 `terminal.clear()` 会把它清掉。bash（`rl_forced_update_display`）、
-zsh（`zle reset-prompt`）退出后会自行全量重绘 prompt，无需 rsime 处理；但 fish 做的是
-基于内部屏幕模型的**差分重绘**，屏幕被清空后模型与实际不一致会错位（候选字画到行首、
-prompt 丢失）。因此设了该开关时，rsime 在退出前把 prompt 最后一行 + 原命令行画回视口
-起始行，恢复 rsime 启动前的屏幕状态。
+**shell 绑定（`print_shell_bind`，由 `shell-init --bind` 生成）：**
 
-> 设计上是**行为开关而非 shell 身份标识**：rsime 不认 shell 名字，任何差分重绘的 shell
-> 设这个开关即可。默认不恢复（对全量重绘的 shell 安全）。逻辑见 `run_tui` 的 cleanup
-> 段，绑定与集成测试见 `print_shell_bind` 与 `tests/shell_init.rs`。
+- bash：`bind -x` 绑定 → `output=$(rsime tui)` → 把 `$output` 插到 `$READLINE_POINT`
+  处并前移光标；`bind -x` 返回后 readline 自动重绘
+- zsh：`zle -N` widget → `output=$(rsime tui)` → `LBUFFER+="$output"`；`zle reset-prompt`
+- fish：`rsime tui | read -l output; and commandline --insert "$output"; commandline -f repaint`
+  （`commandline -f repaint` 强制全量重绘——rsime 在 prompt 下方画屏扰乱了 fish 基于内部屏幕
+  模型的差分重绘，必须 force repaint；与 zsh 的 `zle reset-prompt`、bash 的
+  `rl_forced_update_display` 对应，fzf 的 fish 绑定同样以此收尾）
 
-**fish 的 `ESC(B`：** fish `set_color` 会发出 G0 字符集指定序列 `ESC(B`，`ansi-to-tui`
-无法处理会当字面量留下，`strip_unhandled_escapes()` 在解析前剥掉这类非 SGR 转义。
+**已知限制（bash）：prompt 行在 rsime 运行期间暂时变空。** bash 的 `bind -x` 在执行
+绑定命令前会**无条件**调用 readline 的 `rl_clear_visible_line()` 把当前命令行整行擦掉
+（见 bash 源码 `bashline.c` 的 `bash_execute_unix_command`，仅以终端具备 `ce` 能力为前提——
+所有真实终端都满足，故必然擦除）。因此 bash 下触发 rsime 的瞬间 prompt 行变空，rsime 在其
+下方独立画屏；rsime 退出后 bash 自行 `rl_forced_update_display` 把 prompt + 提交结果重画
+回来，**功能正常**。zsh（zle widget）、fish（`commandline`）不擦行，prompt 全程可见。
+这是 bash 侧的固定行为，**rsime 无法阻止**（擦除发生在 rsime 启动之前）。fzf 在 bash ≥ 4
+的 Ctrl-T / Ctrl-R 上也是同样表现（它只是把自己的 UI 直接画在被擦掉的位置）。
+
+**已知限制（屏幕底部）：** prompt 位于屏幕**最后 1–2 行**时，锚点下移的换行 + ratatui
+自适应可能把 prompt 行卷入视口附近，导致 prompt 行被瞬时触碰（fish 差分重绘可能出现短暂
+错位）。prompt 不在屏幕底部时完全干净。可选加固（后续）：启动时查终端尺寸与光标行，空间
+不足时先发足够换行预留再锚定。绑定与集成测试见 `print_shell_bind` 与 `tests/shell_init.rs`。
 
 ### rime.rs 安全封装
 
@@ -170,5 +178,5 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 - Rust edition 2024，workspace resolver 3，`clap` derive 模式，`clap_complete` 生成 shell 补全
 - `cli` feature 默认未启用，构建 CLI 需 `cargo build --features cli`
 - LLM 运行 git commit 时必须加 `-s`（生成 `Signed-off-by`），并添加
-  `Assisted-by: agent:<模块名>` trailer（如 `Assisted-by: agent:claude`）
+  `Assisted-by: <agent>:<模型名称>` trailer（如 `Assisted-by: claude:glm5.2`）
 - 当项目结构、架构或构建方式发生变化时，必须同步更新本文件（CLAUDE.md）

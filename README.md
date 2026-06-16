@@ -99,6 +99,19 @@ rsime shell-init zsh --bind    # zsh 版本
 rsime shell-init fish --bind   # fish 版本
 ```
 
+> **Note（bash 已知限制）**
+>
+> 在 **bash** 上触发 rsime 时，prompt 所在的那一行会暂时变成**空行**，rsime 在其下方画屏；
+> 退出 rsime（提交候选词）后 bash 会把 prompt 和结果正常重画回来，**功能不受影响**。zsh 和
+> fish 不受此影响，prompt 全程可见。
+>
+> 这是 bash 的 `bind -x` 机制导致的**固有行为**：bash 在执行 `bind -x` 绑定的命令**之前**，
+> 会无条件调用 readline 的 `rl_clear_visible_line()` 把当前命令行整行擦掉（见 bash 源码
+> `bashline.c` 的 `bash_execute_unix_command`）。这一步发生在 rsime 启动**之前**，rsime 无法
+> 阻止。目前**没有简单的绕过办法**：唯一的"绕过"是改用 readline 宏 + `shell-expand-line`
+> 替代 `bind -x`，但代价是只能在 emacs 模式下工作、且运行期间该行会显示 `rsime tui` 这类
+> 字面量，并不比空行更干净——fzf 在 bash ≥ 4 上的 Ctrl-T / Ctrl-R 也是同样的表现。
+
 **写入调试日志：**
 
 ```bash
