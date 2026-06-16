@@ -247,6 +247,12 @@ function M.deactivate()
   state.composing = false
 end
 
+-- Query whether rsime is currently active (input interception installed).
+-- Lets user config / statuslines check the enable state directly.
+function M.is_active()
+  return state.augroup ~= nil
+end
+
 function M.toggle()
   if state.augroup then
     M.deactivate()
