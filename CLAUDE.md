@@ -131,7 +131,7 @@ prompt 行。rsime 不读取任何命令行上下文——它在自己的输入�
 `packpath` 加载方式。
 
 - `init.lua` — 管理 rsime 子进程（jobstart/chansend）、InsertCharPre 按键拦截、
-  特殊按键映射、自动命令（InsertLeave/WinLeave/BufLeave 清理）
+  特殊按键映射、括号/引号键接管（见下）、自动命令（InsertLeave/WinLeave/BufLeave 清理）
 - `ui.lua` — 浮动窗口渲染：preedit 显示、候选词列表（高亮当前选中）
 - `plugin/rsime.lua` — 定义 `:RsimeEnable` / `:RsimeDisable` / `:RsimeToggle` 命令
 
@@ -140,6 +140,19 @@ prompt 行。rsime 不读取任何命令行上下文——它在自己的输入�
 - `bin` — rsime 可执行文件路径（默认 `"rsime"`）
 - `rime_user_data_dir` — RIME 用户数据目录（默认 nil，使用 `~/.config/rsime`）
 - `special_keys` — Vim 按键到 RIME 按键的映射表
+
+**括号/引号键接管（避免与 nvim-autopairs 等配对插件冲突）：** `handle_char` 在
+`InsertCharPre` 里吞掉所有可打印字符（`vim.v.char = ""`）交给 RIME 异步全角重插。
+而 nvim-autopairs 对 `(` 等用的是 `<expr>` keymap，按下时返回 `()<left>`——两者叠加时，
+autopairs 产生的 `)` 也会被吞掉转交 RIME，再在 autopairs 已用 `<left>` 挪动过的光标处
+异步重插，导致括号跑位、双括号挤在一起（如 `一段|文字` 按 `(` 错变成 `一（）|段文字`）。
+为此 rsime 用自己的 buffer-local `<expr>` keymap 接管 `( ) [ ] { } " '` 这些键
+（RIME 会全角化成 `（ ）【 】「 」“ ‘`，且正是 autopairs 绑定的键）：始终 `send_key`
+给 RIME 并 `return ""`，使这些键不再触发 `InsertCharPre`，autopairs 无从介入。`activate`
+前 `save_keymaps` 保存这些键原有的 buffer-local 映射，`deactivate` 时 `restore_keymaps`
+还原（无原映射则删除），以免禁用 rsime 后破坏 autopairs。前提：rsime 的接管 keymap 需在
+autopairs attach 之后注册才能压过它（正常用法——autopairs 随开屏 attach、用户手动
+`:RsimeEnable`——天然满足）。
 
 ## CI/CD
 

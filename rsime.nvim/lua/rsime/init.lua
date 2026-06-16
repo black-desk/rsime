@@ -21,6 +21,10 @@ local state = {
   buf = nil,
   win = nil,
   augroup = nil,
+  -- punct_keys 的原有 buffer-local insert 映射，activate 时保存、deactivate 时还原。
+  -- 不保存/还原的话，rsime 接管这些键会覆盖掉 nvim-autopairs 等插件的映射，
+  -- 禁用 rsime 后括号就不再自动配对了。
+  saved_keymaps = {},
 }
 
 local config = {
@@ -44,6 +48,15 @@ local config = {
 }
 
 local number_keys = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }
+
+-- 这些 ASCII 标点键 RIME 会全角化（（ ）【 】「 」“ ‘），同时它们恰好是
+-- nvim-autopairs（以及类似的配对插件）会绑定 <expr> 映射的键。若让它们落到
+-- InsertCharPre，autopairs 的映射会产生比如 ()<left>，而 handle_char 会把 ( 和 )
+-- 一并吞掉转交 RIME，再异步在 autopairs 已挪动过的光标处重插——结果就是括号
+-- 跑位、双括号挤在一起（见 handle_char 与 tests）。为避免这场 InsertCharPre 层的
+-- 冲突，这里用 rsime 自己的 <expr> keymap 接管它们：始终交给 RIME、原地不插入。
+-- 接管前这些键原有的 buffer-local 映射由 save_keymaps 保存，deactivate 时还原。
+local punct_keys = { "(", ")", "[", "]", "{", "}", '"', "'" }
 
 local function on_response(job_id, data, event)
   if event ~= "stdout" then return end
@@ -213,6 +226,61 @@ local function create_keymaps()
       return key
     end, { expr = true, buffer = true, nowait = true })
   end
+
+  -- 括号/引号键：始终交给 RIME 全角化，并通过 keymap 接管以避免与
+  -- nvim-autopairs 等 InsertCharPre 层的配对插件冲突（原映射已由 save_keymaps 保存）。
+  for _, key in ipairs(punct_keys) do
+    vim.keymap.set("i", key, function()
+      send_key(key)
+      return ""
+    end, { expr = true, buffer = true, nowait = true })
+  end
+end
+
+-- 保存 punct_keys 当前 buffer-local 的 insert 映射，供 deactivate 时还原。
+-- 只保存 buffer-local 映射；全局映射由 nvim 的 buffer-local > global 优先级自然让位，
+-- rsime 删掉自己的 buffer-local 映射后全局映射会自动重新可见，无需处理。
+local function save_keymaps()
+  state.saved_keymaps = {}
+  local existing = vim.api.nvim_buf_get_keymap(0, "i")
+  for _, key in ipairs(punct_keys) do
+    for _, m in ipairs(existing) do
+      if m.lhs == key then
+        state.saved_keymaps[key] = {
+          callback = m.callback,
+          rhs = m.rhs,
+          expr = m.expr == 1,
+          noremap = m.noremap == 1,
+          silent = m.silent == 1,
+          nowait = m.nowait == 1,
+          script = m.script == 1,
+          desc = m.desc,
+        }
+        break
+      end
+    end
+  end
+end
+
+-- 还原 punct_keys 的原映射：有保存的就恢复（覆盖 rsime 的接管），没有就删除。
+local function restore_keymaps()
+  for _, key in ipairs(punct_keys) do
+    local saved = state.saved_keymaps and state.saved_keymaps[key]
+    if saved and (saved.callback ~= nil or (saved.rhs and saved.rhs ~= "")) then
+      vim.api.nvim_buf_set_keymap(0, "i", key, saved.rhs or "", {
+        callback = saved.callback,
+        expr = saved.expr,
+        noremap = saved.noremap,
+        silent = saved.silent,
+        nowait = saved.nowait,
+        script = saved.script,
+        desc = saved.desc,
+      })
+    else
+      pcall(vim.keymap.del, "i", key, { buffer = true })
+    end
+  end
+  state.saved_keymaps = {}
 end
 
 local function delete_keymaps()
@@ -233,6 +301,7 @@ end
 
 function M.activate()
   ensure_job()
+  save_keymaps()
   create_autocmds()
   create_keymaps()
 end
@@ -243,6 +312,7 @@ function M.deactivate()
   end
   remove_autocmds()
   delete_keymaps()
+  restore_keymaps()
   ui.hide(state)
   state.composing = false
 end
