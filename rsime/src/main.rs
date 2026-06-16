@@ -21,7 +21,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
-use ansi_to_tui::IntoText;
 use rsime::rime::{
     deploy_on_changed, finalize, get_schema_list, initialize,
     set_notification_handler, setup, DeployResult, Session, Traits,
@@ -207,15 +206,20 @@ fn print_shell_bind(shell: &str, key: Option<&str>) -> Result<()> {
     let default_bind = "\\ei";
     let bind = key.unwrap_or(default_bind);
 
+    // draw-below 模式：rsime 在 prompt 下方独立画 2 行（组合行 + 候选行），完全不碰 prompt。
+    // shell 绑定只需跑 `rsime tui`，拿到提交的 output 后用各 shell 原生变量插到光标处。
+    // 不再向 rsime 传任何命令行上下文（RSIME_* 全部移除）。
     match shell {
         Shell::Bash => {
             println!(r#"# rsime TUI keybinding
 stty -ixon
 rsime-widget() {{
     local output
-    output=$(RSIME_PROMPT="${{PS1@P}}" RSIME_READLINE_LINE="$READLINE_LINE" RSIME_READLINE_POINT="$READLINE_POINT" rsime tui)
-    [[ -n "$output" ]] && READLINE_LINE="${{READLINE_LINE:0:$READLINE_POINT}}$output${{READLINE_LINE:$READLINE_POINT}}"
-    READLINE_POINT=$(( READLINE_POINT + ${{#output}} ))
+    output=$(rsime tui)
+    [[ -n "$output" ]] && {{
+        READLINE_LINE="${{READLINE_LINE:0:$READLINE_POINT}}$output${{READLINE_LINE:$READLINE_POINT}}"
+        READLINE_POINT=$(( READLINE_POINT + ${{#output}} ))
+    }}
 }}
 bind -x '"{bind}": rsime-widget'"#);
         }
@@ -224,12 +228,8 @@ bind -x '"{bind}": rsime-widget'"#);
             let zsh_key = bind.replace("\\C-", "^").replace("\\e", "^[").replace('\\', "");
             println!(r#"# rsime TUI keybinding
 rsime-widget() {{
-    local output _rp
-    # 完整渲染 prompt：(e) 先执行 prompt_subst（${{...}}/$((...))/函数调用，Powerlevel10k 等靠它），
-    # 再 (%) 做 % 码展开。${{(%):-...}} 用 subst 展开取结果，去掉尾部换行。
-    _rp=${{(%):-${{(e)PROMPT}}}}
-    _rp=${{_rp%$'\n'}}
-    output=$(RSIME_PROMPT="$_rp" RSIME_READLINE_LINE="$BUFFER" RSIME_READLINE_POINT="$CURSOR" rsime tui)
+    local output
+    output=$(rsime tui)
     [[ -n "$output" ]] && LBUFFER+="$output"
     zle reset-prompt
 }}
@@ -239,25 +239,15 @@ bindkey '{zsh_key}' rsime-widget"#);
         Shell::Fish => {
             // 将 \C-q 转换为 \cq
             let fish_key = bind.to_lowercase().replace("\\c-", "\\c");
+            // commandline -f repaint 强制 fish 全量重绘：rsime 在 prompt 下方画屏会扰乱 fish
+            // 基于内部屏幕模型的差分重绘，必须 force repaint（等价于 zsh 的 `zle reset-prompt`、
+            // bash 的 rl_forced_update_display）。fzf 的 fish 绑定同样以此收尾。
             println!(r##"# rsime TUI keybinding
-bind {fish_key} 'RSIME_RESTORE_PROMPT=1 RSIME_PROMPT=(fish_prompt) RSIME_READLINE_LINE=(commandline) RSIME_READLINE_POINT=(commandline --cursor) rsime tui | read -l output; and commandline --insert "$output"'"##);
+bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output"; commandline -f repaint'"##);
         }
         _ => bail!("unsupported shell for keybinding: {shell}"),
     }
     Ok(())
-}
-
-/// 解析 "major.minor" 形式的 bash 版本字符串。
-fn parse_bash_version(ver: &str) -> (u32, u32) {
-    let mut parts = ver.split('.');
-    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    (major, minor)
-}
-
-/// ${PS1@P}（prompt 展开）需要 bash >= 4.4。
-fn bash_supports_prompt_expansion(major: u32, minor: u32) -> bool {
-    (major, minor) >= (4, 4)
 }
 
 fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
@@ -268,20 +258,6 @@ fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
     clap_complete::generate(sh, &mut Cli::command(), "rsime", &mut std::io::stdout());
 
     if let Some(key) = bind_key {
-        if matches!(sh, Shell::Bash) {
-            let output = Command::new("bash")
-                .arg("-c")
-                .arg("echo \"${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}\"")
-                .output()?;
-            let (major, minor) =
-                parse_bash_version(String::from_utf8_lossy(&output.stdout).trim());
-            if !bash_supports_prompt_expansion(major, minor) {
-                bail!(
-                    "bash {major}.{minor} does not support ${{PS1@P}} prompt expansion (requires bash >= 4.4).\n\
-                     Consider using zsh or fish, or installing a newer bash via Homebrew."
-                );
-            }
-        }
         println!();
         print_shell_bind(shell, Some(key))?;
     }
@@ -400,125 +376,6 @@ fn run_stdio(session: &Session) -> Result<()> {
     Ok(())
 }
 
-/// 从环境变量中读取 shell 传递的命令行上下文。
-/// bash（$READLINE_LINE/$READLINE_POINT）、zsh（$BUFFER/$CURSOR）
-/// 和 fish（commandline/commandline --cursor）的快捷键绑定都会把
-/// 命令行内容与光标位置传入这两个环境变量。
-///
-/// 命令行为空（在空命令行上触发）时，若绑定了 RSIME_PROMPT 则仍返回空命令
-/// 上下文（point=0），让真实 prompt 能正常渲染；否则返回 None 退回独立模式。
-fn read_shell_context() -> Option<(String, usize)> {
-    let line = std::env::var("RSIME_READLINE_LINE").ok()?;
-    // 空命令行：若没有 shell prompt，退回独立模式；若有，返回空命令上下文
-    if line.is_empty() {
-        if std::env::var("RSIME_PROMPT").map(|v| !v.is_empty()).unwrap_or(false) {
-            return Some((String::new(), 0));
-        }
-        return None;
-    }
-    let point = std::env::var("RSIME_READLINE_POINT")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(line.chars().count());
-    Some((line, point))
-}
-
-/// 剥掉 ansi-to-tui 处理不了的转义序列。
-///
-/// ansi-to-tui 只认 `ESC[`（CSI）和 `ESC]`（OSC）。对其它转义（最典型的是 fish 的
-/// 字符集指定 `ESC(B`），它只吞掉 `ESC`、把后续字节当字面量，于是出现 `(B` 残留。
-/// 这里把这些非 CSI/OSC 转义（`ESC` + 中间字节 `0x20..0x2f`* + 终止字节 `0x30..0x7e`）
-/// 整段删掉，SGR（`ESC[...m`）与 OSC（`ESC]...`）原样保留交给 ansi-to-tui。
-fn strip_unhandled_escapes(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == 0x1b
-            && i + 1 < bytes.len()
-            && bytes[i + 1] != b'['
-            && bytes[i + 1] != b']'
-        {
-            // 非 CSI/OSC 转义：跳过 ESC + 中间字节 + 一个终止字节
-            i += 1; // ESC
-            while i < bytes.len() && (0x20..=0x2f).contains(&bytes[i]) {
-                i += 1; // 中间字节
-            }
-            if i < bytes.len() && (0x30..=0x7e).contains(&bytes[i]) {
-                i += 1; // 终止字节
-            }
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// 把 shell 传来的渲染后 prompt（带 ANSI 颜色码）解析成 ratatui 的带样式 spans，
-/// 取最后一个非空行（多行 prompt 只用光标所在的最后一行）。
-/// 解析失败时退化为纯文本最后一行。
-fn parse_prompt_spans(prompt: &str) -> Vec<Span<'static>> {
-    let prompt = strip_unhandled_escapes(prompt);
-    let text = match prompt.into_text() {
-        Ok(text) => text,
-        Err(_) => {
-            let last = prompt
-                .lines()
-                .rev()
-                .find(|l| !l.is_empty())
-                .unwrap_or("");
-            return vec![Span::raw(last.to_string())];
-        }
-    };
-    text.lines
-        .iter()
-        .rev()
-        .find(|line| line.spans.iter().any(|s| !s.content.is_empty()))
-        .map(|line| line.spans.clone())
-        .unwrap_or_default()
-}
-
-/// 从 RSIME_PROMPT 环境变量读取 shell 渲染好的 prompt 并解析成 spans。
-/// 缺失或为空时返回 None（回退到非 shell 模式）。
-fn read_shell_prompt() -> Option<Vec<Span<'static>>> {
-    let prompt = std::env::var("RSIME_PROMPT").ok()?;
-    if prompt.is_empty() {
-        return None;
-    }
-    Some(parse_prompt_spans(&prompt))
-}
-
-/// 拼装 shell 模式下 TUI 第一行：
-///   prompt spans + 光标前命令 + 已提交前段 + preedit + 已提交后段 + 光标后命令
-/// preedit 用黄色+下划线标识"未提交"，其余命令/已提交文本用默认样式，prompt 保留各自颜色。
-fn build_shell_line(
-    prompt_spans: &[Span<'static>],
-    line: &str,
-    point: usize,
-    out_left: &str,
-    preedit: &str,
-    cursor_pos: usize,
-    out_right: &str,
-) -> Line<'static> {
-    let rl_before: String = line.chars().take(point).collect();
-    let rl_after: String = line.chars().skip(point).collect();
-    let preedit_before: String = preedit.chars().take(cursor_pos).collect();
-    let preedit_after: String = preedit.chars().skip(cursor_pos).collect();
-    let preedit_style = Style::default().fg(Color::Yellow).underlined();
-    let plain = Style::default();
-
-    let mut spans: Vec<Span<'static>> = prompt_spans.to_vec();
-    spans.push(Span::styled(rl_before, plain));
-    spans.push(Span::styled(out_left.to_string(), plain));
-    spans.push(Span::styled(preedit_before, preedit_style));
-    spans.push(Span::raw("|"));
-    spans.push(Span::styled(preedit_after, preedit_style));
-    spans.push(Span::styled(out_right.to_string(), plain));
-    spans.push(Span::styled(rl_after, plain));
-    Line::from(spans)
-}
-
 fn run_tui(session: &Session) -> Result<()> {
     let tty = std::fs::OpenOptions::new()
         .read(true)
@@ -537,50 +394,16 @@ fn run_tui(session: &Session) -> Result<()> {
     }
     unsafe { libc::dup2(tty_fd, 1) };
 
-    // 读取 shell 传递的命令行上下文
-    let shell_ctx = read_shell_context();
-    let prompt = read_shell_prompt();
-    // 是否需要 rsime 在退出时把覆盖掉的 prompt 画回屏幕。由做差分重绘、不会在 rsime
-    // 退出后自行全量重绘 prompt 的 shell（如 fish）通过 RSIME_RESTORE_PROMPT=1 显式开启。
-    // 做全量重绘的 shell（bash 的 rl_forced_update_display、zsh 的 zle reset-prompt）
-    // 不设置该变量（默认不恢复），否则会和它们的重绘叠加导致重复。
-    // 这是个行为开关而非 shell 身份标识：任何差分重绘的 shell 都能设置它，无需 rsime 认名字。
-    let restore_prompt = std::env::var("RSIME_RESTORE_PROMPT")
-        .map(|v| !v.is_empty() && v != "0")
-        .unwrap_or(false);
-    // 原始 prompt 字符串（含 ANSI 颜色码）。仅在 RSIME_RESTORE_PROMPT=1 时用于把覆盖掉的
-    // 最后一行 prompt 画回屏幕——见下方 cleanup 的说明。
-    let raw_prompt = std::env::var("RSIME_PROMPT")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim_end_matches(['\n', '\r']).to_owned());
-    // 诊断日志：便于排查各 shell 传参与 prompt 解析
-    log(&format!(
-        "shell_ctx: line={:?} point={:?}; prompt_some={}",
-        shell_ctx.as_ref().map(|(l, _)| l.as_str()),
-        shell_ctx.as_ref().map(|(_, p)| *p),
-        prompt.is_some(),
-    ));
-    if let Ok(v) = std::env::var("RSIME_READLINE_LINE") {
-        log(&format!("RSIME_READLINE_LINE raw ({} chars) = {:?}", v.chars().count(), v));
+    // draw-below 模式：rsime 在 prompt 下方独立画 2 行，不碰 prompt 行。
+    // 先发一个换行把光标移到 prompt 下一行，让 ratatui 的 Viewport::Inline(2) 锚定在
+    // prompt 下方——这样 prompt 行位于视口上方，由 ratatui 差分渲染保护，从不被覆盖；
+    // terminal.clear() 也只清视口（prompt 下方两行），shell 的屏幕模型保持一致。
+    // （shell 留下的 raw 模式下 \n 是 linefeed；prompt 在屏幕底部时会滚动，见已知限制）
+    if let Err(e) = crossterm::execute!(std::io::stdout(), crossterm::style::Print("\n")) {
+        unsafe { libc::dup2(saved_stdout, 1) };
+        unsafe { libc::close(saved_stdout) };
+        return Err(e.into());
     }
-    if let Ok(v) = std::env::var("RSIME_READLINE_POINT") {
-        log(&format!("RSIME_READLINE_POINT raw = {:?}", v));
-    }
-    if let Ok(v) = std::env::var("RSIME_PROMPT") {
-        log(&format!(
-            "RSIME_PROMPT raw ({} chars) = {:?}",
-            v.chars().count(),
-            v
-        ));
-    }
-    if let Some(spans) = &prompt {
-        let t: String = spans.iter().map(|s| s.content.as_ref()).collect();
-        log(&format!("parsed prompt spans ({}): text={:?}", spans.len(), t));
-    }
-    // 无论有无 shell 上下文，viewport 始终 2 行：
-    //   无上下文：preedit 行 + 候选词行
-    //   有上下文：内联 preedit 的命令行 + 候选词行
 
     let backend = CrosstermBackend::new(tty);
     let mut terminal = match Terminal::with_options(
@@ -601,37 +424,18 @@ fn run_tui(session: &Session) -> Result<()> {
     let mut cursor: usize = 0;
 
     let viewport_y = terminal.get_frame().area().y;
-    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor, &shell_ctx, &prompt);
+    let result = tui_loop(session, &mut terminal, &mut output, &mut cursor);
 
-    // 恢复终端状态（此时 stdout 仍指向 /dev/tty，cursor::position() 可正常工作）
-    // terminal.clear() 清除视口内容并恢复光标到清除前的位置。
-    // 但该位置可能在视口的任意行（取决于最后一次 draw 写入内容的位置），
-    // 因此用视口起点的绝对坐标定位光标，而非相对移动。
+    // 恢复终端状态（此时 stdout 仍指向 /dev/tty）。
+    // terminal.clear() 清除 prompt 下方的 2 行视口；prompt 行在视口上方，不受影响。
+    // 视口顶 viewport_y = prompt 下一行（见上方锚点下移），故 MoveTo(0, viewport_y - 1)
+    // 把光标移回 prompt 行行首，让 shell 接手重绘时光标在正确的行上。
     let cleanup = (|| -> Result<()> {
         terminal.clear()?;
-        // 将光标移到视口起始行行首（即 TUI 开始前的光标位置）
-        crossterm::execute!(std::io::stdout(), crossterm::cursor::MoveTo(0, viewport_y))?;
-        // 仅当调用方通过 RSIME_RESTORE_PROMPT=1 请求时：rsime 的 Inline 视口覆盖了
-        // prompt 的最后一行，terminal.clear() 之后那行也被清掉。做差分重绘的 shell
-        //（如 fish）依赖其内部屏幕模型，若实际屏幕与模型不一致就会出现候选字画到行首、
-        // prompt 丢失等错位（见 bug 报告：两个「测试」、prompt 消失）。退出前把 prompt
-        // 最后一行 + 原命令行画回视口起始行，让屏幕恢复到 rsime 启动前的状态即可。
-        // 注意只画最后一行：多行 prompt 中 rsime 只覆盖了最后一行，更上面的行未被触碰；
-        // 画整段 prompt 会把它们错位重排。
-        // 做全量重绘的 shell（bash、zsh）不应设置 RSIME_RESTORE_PROMPT：它们退出后会自己
-        // 全量重绘，rsime 再画一遍会和它们叠加导致重复。
-        if restore_prompt {
-            if let Some(prompt) = raw_prompt.as_ref() {
-                let last_line = prompt.rsplit('\n').next().unwrap_or("");
-                let line = shell_ctx.as_ref().map(|(l, _)| l.as_str()).unwrap_or("");
-                crossterm::execute!(
-                    std::io::stdout(),
-                    crossterm::style::Print(last_line),
-                    crossterm::style::Print(line),
-                )?;
-                log("cleanup: restored last prompt line + command line (RSIME_RESTORE_PROMPT)");
-            }
-        }
+        crossterm::execute!(
+            std::io::stdout(),
+            crossterm::cursor::MoveTo(0, viewport_y.saturating_sub(1))
+        )?;
         terminal.show_cursor()?;
         Ok(())
     })();
@@ -655,8 +459,6 @@ fn tui_loop(
     terminal: &mut Terminal<CrosstermBackend<std::fs::File>>,
     output: &mut String,
     cursor: &mut usize,
-    shell_ctx: &Option<(String, usize)>,
-    prompt: &Option<Vec<Span<'static>>>,
 ) -> Result<()> {
     let mut frame = 0u32;
     loop {
@@ -710,41 +512,18 @@ fn tui_loop(
             let preedit_after: String = preedit.chars().skip(cursor_pos).collect();
             let preedit_with_cursor = format!("{}|{}", preedit_before, preedit_after);
 
-            // 第一行：命令行内容
-            let comp_line = if let Some(prompt_spans) = prompt {
-                // shell 模式（真实 prompt）：prompt spans + 命令 + 内联 preedit
-                let (line, point) = shell_ctx
-                    .as_ref()
-                    .map(|(l, p)| (l.as_str(), *p))
-                    .unwrap_or(("", 0));
-                Paragraph::new(build_shell_line(
-                    prompt_spans,
-                    line,
-                    point,
-                    &out_left,
-                    &preedit,
-                    cursor_pos,
-                    &out_right,
-                ))
-            } else if let Some((line, point)) = shell_ctx {
-                // 旧的内联模式（无 RSIME_PROMPT，向后兼容）：❯ + 命令 + preedit
-                let rl_before: String = line.chars().take(*point).collect();
-                let rl_after: String = line.chars().skip(*point).collect();
-                let cmd_style = Style::default().dim();
-                let preedit_style = Style::default().fg(Color::Yellow);
-                let spans = vec![
-                    Span::styled("❯ ", cmd_style),
-                    Span::styled(rl_before, cmd_style),
-                    Span::styled(out_left, cmd_style),
-                    Span::styled(preedit_with_cursor, preedit_style),
-                    Span::styled(out_right, cmd_style),
-                    Span::styled(rl_after, cmd_style),
-                ];
-                Paragraph::new(Line::from(spans))
-            } else if preedit.is_empty() && candidates.is_empty() && output.is_empty() {
-                Paragraph::new("❯ Type pinyin, Esc to finish").dim()
+            // 第一行：rsime 自己的组合行（已提交文本 + 内联 preedit），不碰 shell prompt。
+            // 空组合时显示提示。preedit 用黄色高亮以区分已提交文本。
+            let comp_line = if preedit.is_empty() && candidates.is_empty() && output.is_empty() {
+                Paragraph::new("Type pinyin, Esc to finish").dim()
             } else {
-                Paragraph::new(format!("❯ {}{}{}", out_left, preedit_with_cursor, out_right))
+                let preedit_style = Style::default().fg(Color::Yellow).underlined();
+                let plain = Style::default();
+                Paragraph::new(Line::from(vec![
+                    Span::styled(out_left, plain),
+                    Span::styled(preedit_with_cursor, preedit_style),
+                    Span::styled(out_right, plain),
+                ]))
             };
 
             let cand_text = candidates.join("  ");
@@ -893,126 +672,5 @@ fn main() -> Result<()> {
             finalize();
             result
         }
-    }
-}
-
-#[cfg(test)]
-mod prompt_tests {
-    use super::*;
-    use ratatui::style::Color;
-
-    fn spans_text(spans: &[Span]) -> String {
-        spans.iter().map(|s| s.content.as_ref()).collect()
-    }
-
-    #[test]
-    fn parse_prompt_plain_text() {
-        let spans = parse_prompt_spans("host> ");
-        assert_eq!(spans_text(&spans), "host> ");
-    }
-
-    #[test]
-    fn parse_prompt_keeps_color() {
-        // green "foo", reset, then " bar"
-        let spans = parse_prompt_spans("\x1b[32mfoo\x1b[0m bar");
-        assert_eq!(spans_text(&spans), "foo bar");
-        assert!(
-            spans.iter().any(|s| s.style.fg == Some(Color::Green)),
-            "green color should be preserved"
-        );
-    }
-
-    #[test]
-    fn parse_prompt_multiline_takes_last_line() {
-        let spans = parse_prompt_spans("line one\n> ");
-        assert_eq!(spans_text(&spans), "> ");
-    }
-
-    #[test]
-    fn parse_prompt_trailing_newline() {
-        // fish 可能输出尾部换行；取最后一个非空行
-        let spans = parse_prompt_spans("host> \n");
-        assert_eq!(spans_text(&spans), "host> ");
-    }
-
-    #[test]
-    fn parse_prompt_empty_returns_empty() {
-        let spans = parse_prompt_spans("");
-        assert!(spans_text(&spans).is_empty());
-    }
-
-    #[test]
-    fn build_shell_line_assembles_parts() {
-        let prompt = vec![Span::raw("host> ")];
-        // 命令 "cd rsime"，readline 光标在 col 2（"cd" 之后）
-        // 已提交 out="AB"，rsime 光标在 1（out_left="A" out_right="B"）
-        // preedit "niha"，composition 光标在 2（"ni" 之后）
-        let line = build_shell_line(&prompt, "cd rsime", 2, "A", "niha", 2, "B");
-        // host> + "cd" + "A" + "ni" + "|" + "ha" + "B" + " rsime"
-        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(text, "host> cdAni|haB rsime");
-    }
-
-    #[test]
-    fn build_shell_line_preedit_is_styled_yellow_underlined() {
-        let prompt = vec![Span::raw("> ")];
-        let line = build_shell_line(&prompt, "", 0, "", "ni", 2, "");
-        let preedit_span = line
-            .spans
-            .iter()
-            .find(|s| s.content.as_ref() == "ni")
-            .expect("preedit span present");
-        assert_eq!(preedit_span.style.fg, Some(Color::Yellow));
-        assert!(preedit_span
-            .style
-            .add_modifier
-            .contains(ratatui::style::Modifier::UNDERLINED));
-    }
-
-    #[test]
-    fn strip_unhandled_escapes_removes_charset_designation() {
-        // fish 的字符集指定 ESC(B；SGR（ESC[92m / ESC[m）必须保留
-        let s = strip_unhandled_escapes("\x1b[92mfoo\x1b(B\x1b[m bar");
-        assert_eq!(s, "\x1b[92mfoo\x1b[m bar");
-    }
-
-    #[test]
-    fn strip_unhandled_escapes_keeps_csi_and_osc() {
-        // CSI 与 OSC 原样保留，交给 ansi-to-tui
-        let s = strip_unhandled_escapes("\x1b[31ma\x1b]0;title\x07b");
-        assert_eq!(s, "\x1b[31ma\x1b]0;title\x07b");
-    }
-
-    #[test]
-    fn parse_prompt_handles_fish_charset_escape() {
-        // 真实 fish prompt 片段（含多处 ESC(B），不应有 "(B" 残留
-        let spans = parse_prompt_spans("\x1b[92mblack_desk\x1b(B\x1b[m@\x1b[32m~/D\x1b(B\x1b[m> ");
-        let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(text, "black_desk@~/D> ");
-        assert!(!text.contains("(B"), "no (B leak");
-    }
-}
-
-#[cfg(test)]
-mod bash_version_tests {
-    use super::*;
-
-    #[test]
-    fn parse_bash_version_works() {
-        assert_eq!(parse_bash_version("5.2"), (5, 2));
-        assert_eq!(parse_bash_version("4.4"), (4, 4));
-        assert_eq!(parse_bash_version("3.2"), (3, 2));
-        assert_eq!(parse_bash_version("garbage"), (0, 0));
-        assert_eq!(parse_bash_version("5"), (5, 0));
-    }
-
-    #[test]
-    fn ps1_at_p_support_threshold() {
-        assert!(!bash_supports_prompt_expansion(3, 2));
-        assert!(!bash_supports_prompt_expansion(4, 0));
-        assert!(!bash_supports_prompt_expansion(4, 3));
-        assert!(bash_supports_prompt_expansion(4, 4));
-        assert!(bash_supports_prompt_expansion(5, 0));
-        assert!(bash_supports_prompt_expansion(5, 2));
     }
 }
