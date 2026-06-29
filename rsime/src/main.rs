@@ -100,6 +100,7 @@ enum Commands {
 
 /// `config get/set <key>` 的动态补全候选（提示但不限制输入——
 /// 用户仍可手输列表外的 key）。仅 `unstable-dynamic` feature 下生效。
+// config 补全的常用 key 提示（对应 user.yaml 的 var/option/* 开关，见 librime switcher）。
 const COMMON_CONFIG_KEYS: &[&str] = &[
     "var/option/simplification",
     "var/option/ascii_punct",

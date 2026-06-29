@@ -93,6 +93,19 @@ rsime current-schema
 rsime set-schema double_pinyin_flypy
 ```
 
+**配置持久化开关（简繁/标点/全角等）：**
+
+开关状态写入 RIME 用户配置（`~/.config/rsime/user.yaml`），所有 `rsime tui` 调用自动沿用。
+
+```bash
+rsime config set var/option/simplification false   # 繁体输出（true=简体）
+rsime config set var/option/ascii_punct true       # 英文标点
+rsime config set var/option/full_shape true        # 全角
+rsime config get var/option/simplification         # 查看当前值
+```
+
+值类型自动推断（`true`/`false`→bool，整数→int，其余→string）。要切回英文输入，直接退出 rsime 即可。
+
 **Shell 初始化（补全 + 可选快捷键绑定）：**
 
 ```bash

@@ -23,6 +23,7 @@ serde_json = "1"
 
 # CLI dependencies
 clap = { version = "4.5.53", features = ["derive"], optional = true }
+# unstable-dynamic：API 可能在 clap_complete 次版本间变动；升级 clap_complete 时需回归 config 补全。
 clap_complete = { version = "4", features = ["unstable-dynamic"], optional = true }
 crossterm = { version = "0.29", features = ["use-dev-tty"], optional = true }
 libc = "0.2"
