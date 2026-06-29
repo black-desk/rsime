@@ -20,6 +20,7 @@ rsime/                     # Cargo workspace（resolver 3）
 │   │   ├── rime.rs        # librime 安全封装（Session/Config/Levers API 等）
 │   │   └── main.rs        # CLI 入口（#[cfg(feature = "cli")]）
 │   └── tests/
+│       ├── config.rs      # config 子命令集成测试
 │       ├── shell_init.rs  # shell 快捷键绑定集成测试
 │       └── stdio.rs       # stdio 集成测试
 ├── rime-sys/              # FFI 绑定 crate
@@ -58,6 +59,7 @@ CLI 子命令：
 - `install` — 在线安装 RIME 输入方案（下载 plum 脚本并通过 bash 执行）
 - `list-schemas` / `current-schema` / `set-schema` — 方案管理
 - `shell-init` — 输出 shell 补全脚本和可选的快捷键绑定
+- `config` — 读写持久化的 RIME 配置（`get/set <key> <value>`，写入 `user.yaml` 的 `var/option/*` 开关，后续 `tui` 调用自动沿用；`<key>` 支持 `clap_complete` 的 `unstable-dynamic` 动态补全，提示但不限制常用开关）
 
 Feature flags：
 
