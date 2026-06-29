@@ -88,6 +88,28 @@ enum Commands {
         #[arg(long, num_args = 0..=1)]
         bind: Option<Option<String>>,
     },
+
+    /// 读写持久化的 RIME 配置（写入 user.yaml）
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// 读取一个配置值（统一以字符串输出）
+    Get {
+        /// 配置键路径，如 var/option/simplification
+        key: String,
+    },
+    /// 设置一个配置值（类型自动推断：true/false→bool，整数→int，其余→string）
+    Set {
+        /// 配置键路径
+        key: String,
+        /// 配置值
+        value: String,
+    },
 }
 
 // JSON 输出类型
@@ -139,6 +161,61 @@ fn init_rime() -> Result<Traits> {
     }
     log("ready.");
     Ok(traits)
+}
+
+/// config 子命令：对 user.yaml 做标量 get/set。
+fn config_cmd(action: ConfigAction) -> Result<()> {
+    use rsime::rime::Config;
+    let config = Config::user_config_open("user")?;
+    match action {
+        ConfigAction::Get { key } => match config_get_scalar(&config, &key) {
+            Some(value) => {
+                println!("{value}");
+                Ok(())
+            }
+            None => bail!("key not found: {key}"),
+        },
+        ConfigAction::Set { key, value } => {
+            match infer_value(&value) {
+                InferredValue::Bool(b) => config.set_bool(&key, b)?,
+                InferredValue::Int(i) => config.set_int(&key, i)?,
+                InferredValue::Str => config.set_string(&key, &value)?,
+            }
+            println!("{key} = {value}");
+            Ok(())
+        }
+    }
+}
+
+/// 推断命令行 value 字符串的配置类型。
+enum InferredValue {
+    Bool(bool),
+    Int(i32),
+    Str,
+}
+
+fn infer_value(s: &str) -> InferredValue {
+    let lower = s.to_ascii_lowercase();
+    match lower.as_str() {
+        "true" => return InferredValue::Bool(true),
+        "false" => return InferredValue::Bool(false),
+        _ => {}
+    }
+    if let Ok(i) = s.parse::<i32>() {
+        return InferredValue::Int(i);
+    }
+    InferredValue::Str
+}
+
+/// 读取任意标量配置值的字符串表示（依次试 bool → int → string）。
+fn config_get_scalar(config: &rsime::rime::Config, key: &str) -> Option<String> {
+    if let Some(b) = config.get_bool(key) {
+        return Some(b.to_string());
+    }
+    if let Some(i) = config.get_int(key) {
+        return Some(i.to_string());
+    }
+    config.get_string(key)
 }
 
 fn list_schemas_cmd() -> Result<()> {
@@ -669,6 +746,12 @@ fn main() -> Result<()> {
             let mut session = Session::new()?;
             let result = run_stdio(&session);
             let _ = session.close();
+            finalize();
+            result
+        }
+        Commands::Config { action } => {
+            let _traits = init_rime()?;
+            let result = config_cmd(action);
             finalize();
             result
         }
