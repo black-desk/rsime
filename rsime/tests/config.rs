@@ -77,3 +77,23 @@ fn config_set_prints_confirmation() {
             "var/option/simplification = false",
         ));
 }
+
+#[test]
+fn config_common_switches_roundtrip() {
+    for (key, val) in [
+        ("var/option/simplification", "false"),
+        ("var/option/ascii_punct", "true"),
+        ("var/option/full_shape", "true"),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        config_cmd(temp.path())
+            .args(["config", "set", key, val])
+            .assert()
+            .success();
+        config_cmd(temp.path())
+            .args(["config", "get", key])
+            .assert()
+            .success()
+            .stdout(format!("{val}\n"));
+    }
+}
