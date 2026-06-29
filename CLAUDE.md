@@ -38,7 +38,7 @@ rsime/                     # Cargo workspace（resolver 3）
 ├── lua -> rsime.nvim/lua  # 符号链接，兼容 packpath
 ├── plugin -> rsime.nvim/plugin
 ├── scripts/               # 辅助脚本（如 ls-todo.sh）
-├── Makefile               # install 目标（自动检测 VCPKG_ROOT）
+├── Makefile               # build/test/clippy/cov/install 等目标（按 VCPKG_ROOT 自动选特性）
 └── .github/workflows/     # CI/CD
 ```
 

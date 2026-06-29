@@ -30,31 +30,22 @@ jobs:
           - name: linux (system librime)
             os: ubuntu-latest
             setup: sudo apt update && sudo apt install -y librime-dev
-            cargo-flags: --features cli --workspace
           - name: linux (bundled-vcpkg)
             os: ubuntu-latest
             setup: ""
-            cargo-flags: --all-features --workspace
             vcpkg-root: /usr/local/share/vcpkg
           - name: macos (system librime)
             os: macos-latest
             setup: brew install librime pkg-config
-            cargo-flags: --features cli --workspace
           - name: macos (bundled-vcpkg)
             os: macos-latest
             setup: ""
-            cargo-flags: --all-features --workspace
             vcpkg-root: /usr/local/share/vcpkg
     permissions:
       id-token: write
       contents: write
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -65,12 +56,12 @@ jobs:
         if: matrix.setup != ''
         run: ${{ matrix.setup }}
 
-      - name: Build and test with coverage
-        run: cargo llvm-cov ${{ matrix.cargo-flags }} --lcov --output-path lcov.info
+      # autotools action: checkout（递归子模块）→ 装 lcov → 跳过 configure →
+      # make（构建）→ make test（cargo-llvm-cov 产出 lcov.info）→ 上传 codecov。
+      # 特性（cli / cli,bundled-vcpkg）由 Makefile 按 VCPKG_ROOT 自动选择。
+      - uses: black-desk/workflows/autotools@master
         env:
           VCPKG_ROOT: ${{ matrix.vcpkg-root }}
-
-      - uses: black-desk/workflows/codecov@master
 
   pass:
     name: pass
