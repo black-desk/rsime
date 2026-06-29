@@ -65,3 +65,15 @@ fn config_get_missing_key_fails() {
         .failure()
         .stderr(predicates::str::contains("key not found"));
 }
+
+#[test]
+fn config_set_prints_confirmation() {
+    let temp = tempfile::tempdir().unwrap();
+    config_cmd(temp.path())
+        .args(["config", "set", "var/option/simplification", "false"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "var/option/simplification = false",
+        ));
+}
