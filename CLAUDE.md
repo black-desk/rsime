@@ -54,8 +54,8 @@ rsime/                     # Cargo workspace（resolver 3）
 
 CLI 子命令：
 
-- `tui` — 交互式 TUI，使用 ratatui + crossterm，通过 `/dev/tty` 读写终端
-- `stdio` — 编辑器集成模式，Vim 风格按键输入，JSONL 输出
+- `tui` — 交互式 TUI，使用 ratatui + crossterm，通过 `/dev/tty` 读写终端；RIME 未消费的按键（见注意事项）自行直通
+- `stdio` — 编辑器集成模式，Vim 风格按键输入，JSONL 输出；响应含 `consumed:bool`，RIME 未消费时为 `false`（见注意事项），由调用者直通字符
 - `install` — 在线安装 RIME 输入方案（下载 plum 脚本并通过 bash 执行）
 - `list-schemas` / `current-schema` / `set-schema` — 方案管理
 - `shell-init` — 输出 shell 补全脚本（动态：`CompleteEnv` registration，覆盖所有子命令与运行时候选）和可选的快捷键绑定
@@ -156,6 +156,8 @@ autopairs 产生的 `)` 也会被吞掉转交 RIME，再在 autopairs 已用 `<l
 autopairs attach 之后注册才能压过它（正常用法——autopairs 随开屏 attach、用户手动
 `:RsimeEnable`——天然满足）。
 
+**未消费按键的直通（`consumed:false` 处理）：** RIME 未消费按键时（如 `ascii_punct` 开启下的标点，见注意事项），`InsertCharPre`/punct_keys 吞掉的字符需要重新插入。因 stdio 是异步的（`chansend` + `on_stdout`），`init.lua` 维护 FIFO `pending` 队列：`send_key(key, ch)` 记录可直通字符（`handle_char`/`punct_keys` 传字符，`handle_special`/`<Esc>` 等传 `nil` 占位防错位），`on_response` 每次取出一项，`consumed:false` 且该项为字符时重插（commit 在前、字符在后）。向后兼容：`resp.consumed ~= false`（nil/true）视为已消费，旧 rsime 无此字段不受影响。
+
 ## CI/CD
 
 GitHub Actions（`.github/workflows/`）：
@@ -191,6 +193,7 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
   按键事件、commit、最终 stdout 输出等信息，排查 shell 集成问题时无需改动绑定即可开启
 - `install_cmd` 通过 HTTP 下载 plum 脚本并 pipe 给 bash，需要网络和 git
 - Rust edition 2024，workspace resolver 3，`clap` derive 模式；`shell-init` 输出 `clap_complete` 的 `unstable-dynamic`（`CompleteEnv`）动态补全——`shell_init_cmd` 通过 self-spawn（`COMPLETE=<shell>` 调自身）取 registration 脚本，使所有子命令（含 `config` 的 `ArgValueCompleter` 运行时候选）共用动态入口，不再用静态 `generate`（两套都用 `complete -F`，无法共存）
+- **RIME 未消费按键（DirectCommit）的处理**：`express_editor` 的 `DirectCommit`（librime `editor.cc`）对可打印字符只 `ctx->Commit()` 当前组合、返回 `kRejected` 丢弃字符本身，交给前端直通。典型场景是 `ascii_punct` 开启：punctuator 放行标点（`kNoop`）→ DirectCommit 丢弃 → 前端须直通，否则标点丢失。`tui` 作为最终前端，`process_key` 返回 not consumed 时自行直通可打印字符（0x21-0x7e）；`stdio` 作为代理只经 `consumed:bool` 字段如实报告（`commit` 仅含 RIME 真实 commit），由调用者决定直通（rsime.nvim 的处理见「未消费按键的直通」）
 - `cli` feature 默认未启用，构建 CLI 需 `cargo build --features cli`
 - LLM 运行 git commit 时必须加 `-s`（生成 `Signed-off-by`），并添加
   `Assisted-by: <agent>:<模型名称>` trailer（如 `Assisted-by: claude:glm5.2`）
