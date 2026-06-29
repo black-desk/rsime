@@ -27,3 +27,31 @@ fn config_set_then_get_bool() {
         .success()
         .stdout("true\n");
 }
+
+#[test]
+fn config_set_then_get_int() {
+    let temp = tempfile::tempdir().unwrap();
+    config_cmd(temp.path())
+        .args(["config", "set", "var/option/custom_int", "123"])
+        .assert()
+        .success();
+    config_cmd(temp.path())
+        .args(["config", "get", "var/option/custom_int"])
+        .assert()
+        .success()
+        .stdout("123\n");
+}
+
+#[test]
+fn config_set_then_get_string() {
+    let temp = tempfile::tempdir().unwrap();
+    config_cmd(temp.path())
+        .args(["config", "set", "var/option/custom_str", "hello"])
+        .assert()
+        .success();
+    config_cmd(temp.path())
+        .args(["config", "get", "var/option/custom_str"])
+        .assert()
+        .success()
+        .stdout("hello\n");
+}
