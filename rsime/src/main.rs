@@ -14,6 +14,8 @@ use std::sync::Mutex;
 
 use anyhow::{bail, Result};
 use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
+use clap_complete::CompleteEnv;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style, Stylize};
@@ -96,16 +98,39 @@ enum Commands {
     },
 }
 
+/// `config get/set <key>` 的动态补全候选（提示但不限制输入——
+/// 用户仍可手输列表外的 key）。仅 `unstable-dynamic` feature 下生效。
+const COMMON_CONFIG_KEYS: &[&str] = &[
+    "var/option/simplification",
+    "var/option/ascii_punct",
+    "var/option/full_shape",
+    "var/option/ascii_mode",
+];
+
+/// 给 config `<key>` 挂的补全器：按当前前缀过滤静态常用开关 key 列表。
+fn complete_config_key(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let Some(prefix) = current.to_str() else {
+        return Vec::new();
+    };
+    COMMON_CONFIG_KEYS
+        .iter()
+        .filter(|k| k.starts_with(prefix))
+        .map(|k| CompletionCandidate::new(*k))
+        .collect()
+}
+
 #[derive(Subcommand)]
 enum ConfigAction {
     /// 读取一个配置值（统一以字符串输出）
     Get {
         /// 配置键路径，如 var/option/simplification
+        #[arg(add = ArgValueCompleter::new(complete_config_key))]
         key: String,
     },
     /// 设置一个配置值（类型自动推断：true/false→bool，整数→int，其余→string）
     Set {
         /// 配置键路径
+        #[arg(add = ArgValueCompleter::new(complete_config_key))]
         key: String,
         /// 配置值
         value: String,
@@ -695,6 +720,11 @@ fn tui_loop(
 }
 
 fn main() -> Result<()> {
+    // 动态补全入口：设置 COMPLETE=<shell> 时输出补全脚本/候选后退出，
+    // 否则正常继续。必须在任何 stdout 写入前调用（见 CompleteEnv 文档）。
+    // 补全是可选增强，核心 config get/set 不依赖它。
+    CompleteEnv::with_factory(Cli::command).complete();
+
     let cli = Cli::parse();
 
     if let Some(path) = &cli.log {
