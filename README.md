@@ -19,6 +19,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ## 前置条件
 
+> **Note（平台支持）**
+> rsime 目前仅支持 **Linux** 与 **macOS**，**暂不打算支持 Windows**。
+
 - [Rust](https://www.rust-lang.org/tools/install) 工具链
 - C/C++ 构建工具链（CMake、C 编译器等）
 - Git（用于获取子模块和安装方案）
