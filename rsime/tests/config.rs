@@ -55,3 +55,13 @@ fn config_set_then_get_string() {
         .success()
         .stdout("hello\n");
 }
+
+#[test]
+fn config_get_missing_key_fails() {
+    let temp = tempfile::tempdir().unwrap();
+    config_cmd(temp.path())
+        .args(["config", "get", "var/option/does_not_exist"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("key not found"));
+}
