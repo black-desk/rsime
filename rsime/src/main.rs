@@ -356,9 +356,28 @@ bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output";
 fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
     use clap_complete::Shell;
 
-    let sh = shell.parse::<Shell>().map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
+    let _ = shell
+        .parse::<Shell>()
+        .map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
 
-    clap_complete::generate(sh, &mut Cli::command(), "rsime", &mut std::io::stdout());
+    // 通过 COMPLETE=<shell> 调用自身，让 main() 开头的 CompleteEnv 输出动态补全
+    // registration 脚本。动态补全覆盖所有子命令（含 config 的 ArgValueCompleter
+    // 运行时候选），取代原先 clap_complete::generate 的静态补全——后者无法表达
+    // complete_config_key 这类按前缀过滤的运行时候选。两套机制都用
+    // `complete -F ... rsime`，不能共存，故统一到动态入口。
+    let exe = std::env::current_exe()?;
+    let output = Command::new(&exe).env("COMPLETE", shell).output()?;
+    if !output.status.success() {
+        bail!(
+            "completion generation failed (status {}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    std::io::stdout().write_all(&output.stdout)?;
+    if !output.stderr.is_empty() {
+        std::io::stderr().write_all(&output.stderr)?;
+    }
 
     if let Some(key) = bind_key {
         println!();
