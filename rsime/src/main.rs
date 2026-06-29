@@ -459,11 +459,18 @@ fn run_stdio(session: &Session) -> Result<()> {
             // 组合状态下按 Esc：交给 RIME 处理（取消组合）
         }
 
-        let _consumed = session.process_key(rsime::rime::KeyEvent::new(key_code));
+        let consumed = session.process_key(rsime::rime::KeyEvent::new(key_code));
 
         let mut commit = String::new();
         while let Some(c) = session.commit() {
             commit.push_str(&c.text());
+        }
+        // RIME 未消费按键时（如 ascii_punct 开启，标点经 punctuator 放行后由
+        // express_editor 的 DirectCommit 返回 kRejected——它只 ctx->Commit() 当前
+        // 组合，字符本身被丢弃，交给前端直通）。图形前端会自己输出该字符，rsime
+        // 也必须如此，否则 ascii_punct 等开关下标点会丢失。
+        if !consumed && (0x21..0x7f).contains(&key_code) {
+            commit.push(key_code as u8 as char);
         }
 
         let (preedit, candidates, highlighted) = match session.context() {
@@ -715,7 +722,29 @@ fn tui_loop(
                         *cursor += 1;
                     }
                     KeyCode::Char(c) => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(c as i32));
+                        let consumed = session.process_key(rsime::rime::KeyEvent::new(c as i32));
+                        // RIME 未消费按键时直通（同 stdio：ascii_punct 开启等情况下
+                        // DirectCommit 返回 kRejected，字符被丢弃交给前端）。先 flush
+                        // pending commit 再插字符，保证 commit（如组合中的拼音候选）排在
+                        // 直通字符之前。
+                        if !consumed {
+                            let mut insert = String::new();
+                            while let Some(commit) = session.commit() {
+                                insert.push_str(&commit.text());
+                            }
+                            if (c as u32) > 0x20 && (c as u32) < 0x7f {
+                                insert.push(c);
+                            }
+                            if !insert.is_empty() {
+                                let byte_pos = output
+                                    .char_indices()
+                                    .nth(*cursor)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(output.len());
+                                output.insert_str(byte_pos, &insert);
+                                *cursor += insert.chars().count();
+                            }
+                        }
                     }
                     KeyCode::Up => {
                         let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
