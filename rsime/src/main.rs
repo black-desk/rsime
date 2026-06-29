@@ -14,6 +14,8 @@ use std::sync::Mutex;
 
 use anyhow::{bail, Result};
 use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
+use clap_complete::CompleteEnv;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style, Stylize};
@@ -88,6 +90,52 @@ enum Commands {
         #[arg(long, num_args = 0..=1)]
         bind: Option<Option<String>>,
     },
+
+    /// 读写持久化的 RIME 配置（写入 user.yaml）
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+/// `config get/set <key>` 的动态补全候选（提示但不限制输入——
+/// 用户仍可手输列表外的 key）。仅 `unstable-dynamic` feature 下生效。
+// config 补全的常用 key 提示（对应 user.yaml 的 var/option/* 开关，见 librime switcher）。
+const COMMON_CONFIG_KEYS: &[&str] = &[
+    "var/option/simplification",
+    "var/option/ascii_punct",
+    "var/option/full_shape",
+    "var/option/ascii_mode",
+];
+
+/// 给 config `<key>` 挂的补全器：按当前前缀过滤静态常用开关 key 列表。
+fn complete_config_key(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    let Some(prefix) = current.to_str() else {
+        return Vec::new();
+    };
+    COMMON_CONFIG_KEYS
+        .iter()
+        .filter(|k| k.starts_with(prefix))
+        .map(|k| CompletionCandidate::new(*k))
+        .collect()
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// 读取一个配置值（统一以字符串输出）
+    Get {
+        /// 配置键路径，如 var/option/simplification
+        #[arg(add = ArgValueCompleter::new(complete_config_key))]
+        key: String,
+    },
+    /// 设置一个配置值（类型自动推断：true/false→bool，整数→int，其余→string）
+    Set {
+        /// 配置键路径
+        #[arg(add = ArgValueCompleter::new(complete_config_key))]
+        key: String,
+        /// 配置值
+        value: String,
+    },
 }
 
 // JSON 输出类型
@@ -104,6 +152,10 @@ struct JsonStdioResponse {
     preedit: String,
     candidates: Vec<JsonCandidate>,
     highlighted: usize,
+    /// RIME 是否消费了该按键。false 表示按键未被处理（如 ascii_punct 开启时的
+    /// 标点，express_editor 的 DirectCommit 返回 kRejected 丢弃字符），调用者
+    /// 应自行直通原字符——rsime 不替它决定，以便编辑器侧与 autopairs 等配合。
+    consumed: bool,
 }
 
 fn init_rime() -> Result<Traits> {
@@ -139,6 +191,61 @@ fn init_rime() -> Result<Traits> {
     }
     log("ready.");
     Ok(traits)
+}
+
+/// config 子命令：对 user.yaml 做标量 get/set。
+fn config_cmd(action: ConfigAction) -> Result<()> {
+    use rsime::rime::Config;
+    let config = Config::user_config_open("user")?;
+    match action {
+        ConfigAction::Get { key } => match config_get_scalar(&config, &key) {
+            Some(value) => {
+                println!("{value}");
+                Ok(())
+            }
+            None => bail!("key not found: {key}"),
+        },
+        ConfigAction::Set { key, value } => {
+            match infer_value(&value) {
+                InferredValue::Bool(b) => config.set_bool(&key, b)?,
+                InferredValue::Int(i) => config.set_int(&key, i)?,
+                InferredValue::Str => config.set_string(&key, &value)?,
+            }
+            println!("{key} = {value}");
+            Ok(())
+        }
+    }
+}
+
+/// 推断命令行 value 字符串的配置类型。
+enum InferredValue {
+    Bool(bool),
+    Int(i32),
+    Str,
+}
+
+fn infer_value(s: &str) -> InferredValue {
+    let lower = s.to_ascii_lowercase();
+    match lower.as_str() {
+        "true" => return InferredValue::Bool(true),
+        "false" => return InferredValue::Bool(false),
+        _ => {}
+    }
+    if let Ok(i) = s.parse::<i32>() {
+        return InferredValue::Int(i);
+    }
+    InferredValue::Str
+}
+
+/// 读取任意标量配置值的字符串表示（依次试 bool → int → string）。
+fn config_get_scalar(config: &rsime::rime::Config, key: &str) -> Option<String> {
+    if let Some(b) = config.get_bool(key) {
+        return Some(b.to_string());
+    }
+    if let Some(i) = config.get_int(key) {
+        return Some(i.to_string());
+    }
+    config.get_string(key)
 }
 
 fn list_schemas_cmd() -> Result<()> {
@@ -253,9 +360,28 @@ bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output";
 fn shell_init_cmd(shell: &str, bind_key: Option<&str>) -> Result<()> {
     use clap_complete::Shell;
 
-    let sh = shell.parse::<Shell>().map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
+    let _ = shell
+        .parse::<Shell>()
+        .map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
 
-    clap_complete::generate(sh, &mut Cli::command(), "rsime", &mut std::io::stdout());
+    // 通过 COMPLETE=<shell> 调用自身，让 main() 开头的 CompleteEnv 输出动态补全
+    // registration 脚本。动态补全覆盖所有子命令（含 config 的 ArgValueCompleter
+    // 运行时候选），取代原先 clap_complete::generate 的静态补全——后者无法表达
+    // complete_config_key 这类按前缀过滤的运行时候选。两套机制都用
+    // `complete -F ... rsime`，不能共存，故统一到动态入口。
+    let exe = std::env::current_exe()?;
+    let output = Command::new(&exe).env("COMPLETE", shell).output()?;
+    if !output.status.success() {
+        bail!(
+            "completion generation failed (status {}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    std::io::stdout().write_all(&output.stdout)?;
+    if !output.stderr.is_empty() {
+        std::io::stderr().write_all(&output.stderr)?;
+    }
 
     if let Some(key) = bind_key {
         println!();
@@ -337,12 +463,17 @@ fn run_stdio(session: &Session) -> Result<()> {
             // 组合状态下按 Esc：交给 RIME 处理（取消组合）
         }
 
-        let _consumed = session.process_key(rsime::rime::KeyEvent::new(key_code));
+        let consumed = session.process_key(rsime::rime::KeyEvent::new(key_code));
 
         let mut commit = String::new();
         while let Some(c) = session.commit() {
             commit.push_str(&c.text());
         }
+        // 不替调用者直通：如实报告 RIME 是否消费了该按键（consumed 字段），让调用者
+        // 决定如何处理未消费的字符。RIME 未消费时（如 ascii_punct 开启下的标点，
+        // express_editor DirectCommit 只 ctx->Commit() 组合、返回 kRejected 丢弃字符），
+        // commit 可能含组合提交，但字符本身要由调用者（rsime.nvim 等）自行直通，
+        // 以便它和 autopairs 等插件配合。
 
         let (preedit, candidates, highlighted) = match session.context() {
             Some(ctx) => {
@@ -367,6 +498,7 @@ fn run_stdio(session: &Session) -> Result<()> {
             preedit,
             candidates,
             highlighted,
+            consumed,
         };
         serde_json::to_writer(&mut writer, &resp)?;
         writeln!(writer)?;
@@ -593,7 +725,29 @@ fn tui_loop(
                         *cursor += 1;
                     }
                     KeyCode::Char(c) => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(c as i32));
+                        let consumed = session.process_key(rsime::rime::KeyEvent::new(c as i32));
+                        // RIME 未消费按键时直通（同 stdio：ascii_punct 开启等情况下
+                        // DirectCommit 返回 kRejected，字符被丢弃交给前端）。先 flush
+                        // pending commit 再插字符，保证 commit（如组合中的拼音候选）排在
+                        // 直通字符之前。
+                        if !consumed {
+                            let mut insert = String::new();
+                            while let Some(commit) = session.commit() {
+                                insert.push_str(&commit.text());
+                            }
+                            if (c as u32) > 0x20 && (c as u32) < 0x7f {
+                                insert.push(c);
+                            }
+                            if !insert.is_empty() {
+                                let byte_pos = output
+                                    .char_indices()
+                                    .nth(*cursor)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(output.len());
+                                output.insert_str(byte_pos, &insert);
+                                *cursor += insert.chars().count();
+                            }
+                        }
                     }
                     KeyCode::Up => {
                         let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
@@ -618,6 +772,11 @@ fn tui_loop(
 }
 
 fn main() -> Result<()> {
+    // 动态补全入口：设置 COMPLETE=<shell> 时输出补全脚本/候选后退出，
+    // 否则正常继续。必须在任何 stdout 写入前调用（见 CompleteEnv 文档）。
+    // 补全是可选增强，核心 config get/set 不依赖它。
+    CompleteEnv::with_factory(Cli::command).complete();
+
     let cli = Cli::parse();
 
     if let Some(path) = &cli.log {
@@ -669,6 +828,12 @@ fn main() -> Result<()> {
             let mut session = Session::new()?;
             let result = run_stdio(&session);
             let _ = session.close();
+            finalize();
+            result
+        }
+        Commands::Config { action } => {
+            let _traits = init_rime()?;
+            let result = config_cmd(action);
             finalize();
             result
         }

@@ -25,6 +25,9 @@ local state = {
   -- 不保存/还原的话，rsime 接管这些键会覆盖掉 nvim-autopairs 等插件的映射，
   -- 禁用 rsime 后括号就不再自动配对了。
   saved_keymaps = {},
+  -- 发给 rsime 的按键按 FIFO 配对 stdio 响应；记录可直通字符，
+  -- consumed:false 时由 on_response 重新插入。
+  pending = {},
 }
 
 local config = {
@@ -69,6 +72,10 @@ local function on_response(job_id, data, event)
     local ok, resp = pcall(vim.json.decode, line)
     if not ok then goto continue end
 
+    -- stdio 请求-响应严格 FIFO：每个发送的按键（send_key）对应一个响应，
+    -- 取出对应的 pending 项（nil=不可直通占位，字符串=可直通字符）。
+    local pending_ch = table.remove(state.pending, 1)
+
     if type(resp.commit) ~= "string"
       or type(resp.preedit) ~= "string"
       or type(resp.candidates) ~= "table"
@@ -85,11 +92,22 @@ local function on_response(job_id, data, event)
       goto continue
     end
 
+    local buf = vim.api.nvim_get_current_buf()
+    local r, c = unpack(vim.api.nvim_win_get_cursor(0))
+
     if resp.commit ~= "" then
-      local buf = vim.api.nvim_get_current_buf()
-      local r, c = unpack(vim.api.nvim_win_get_cursor(0))
       vim.api.nvim_buf_set_text(buf, r - 1, c, r - 1, c, { resp.commit })
-      vim.api.nvim_win_set_cursor(0, { r, c + #resp.commit })
+      c = c + #resp.commit
+      vim.api.nvim_win_set_cursor(0, { r, c })
+    end
+
+    -- consumed:false 表示 RIME 未消费该按键（如 ascii_punct 开启时的标点，
+    -- express_editor DirectCommit 返回 kRejected 丢弃字符）。重插被吞的字符
+    -- （InsertCharPre 吞掉的，或 punct_keys 接管的）。旧 rsime 无此字段，视为
+    -- 已消费（nil ~= false）。
+    if resp.consumed == false and pending_ch ~= nil then
+      vim.api.nvim_buf_set_text(buf, r - 1, c, r - 1, c, { pending_ch })
+      vim.api.nvim_win_set_cursor(0, { r, c + #pending_ch })
     end
 
     state.composing = resp.preedit ~= "" or #resp.candidates > 0
@@ -106,6 +124,7 @@ end
 local function on_exit(job_id, code, event)
   log("on_exit: job_id=%d code=%d", job_id, code)
   state.job_id = nil
+  state.pending = {}
   if code ~= 0 then
     vim.notify(string.format("rsime exited with code %d", code), vim.log.levels.ERROR)
   end
@@ -127,6 +146,7 @@ local function ensure_job()
     job_opts.env = { string.format("RIME_USER_DATA_DIR=%s", config.rime_user_data_dir) }
   end
   state.job_id = vim.fn.jobstart(cmd, job_opts)
+  state.pending = {}  -- 新 job，响应队列重新开始
   log("ensure_job: job_id=%d", state.job_id)
   if state.job_id <= 0 then
     vim.notify("Failed to start rsime", vim.log.levels.ERROR)
@@ -136,13 +156,16 @@ local function ensure_job()
   return state.job_id
 end
 
-local function send_key(key)
+-- 发送按键给 rsime。ch 非 nil 表示这是可直通的字符（InsertCharPre 吞掉的，或
+-- punct_keys 接管的），RIME 未消费（consumed:false）时由 on_response 重插。
+local function send_key(key, ch)
   local job = ensure_job()
   if not job then
     log("send_key: no job, dropping key=%s", vim.inspect(key))
     return
   end
-  log("send_key: %s", vim.inspect(key))
+  log("send_key: %s ch=%s", vim.inspect(key), vim.inspect(ch))
+  table.insert(state.pending, ch)  -- nil=占位（不可直通），字符串=可直通
   vim.fn.chansend(job, key .. "\n")
 end
 
@@ -165,7 +188,7 @@ local function handle_char()
   if ch == "8" then return end
   if ch == "9" then return end
   if ch == "0" then return end
-  send_key(ch)
+  send_key(ch, ch)
   vim.v.char = ""
 end
 
@@ -231,7 +254,7 @@ local function create_keymaps()
   -- nvim-autopairs 等 InsertCharPre 层的配对插件冲突（原映射已由 save_keymaps 保存）。
   for _, key in ipairs(punct_keys) do
     vim.keymap.set("i", key, function()
-      send_key(key)
+      send_key(key, key)
       return ""
     end, { expr = true, buffer = true, nowait = true })
   end
@@ -315,6 +338,7 @@ function M.deactivate()
   restore_keymaps()
   ui.hide(state)
   state.composing = false
+  state.pending = {}
 end
 
 -- Query whether rsime is currently active (input interception installed).

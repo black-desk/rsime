@@ -20,6 +20,7 @@ rsime/                     # Cargo workspace（resolver 3）
 │   │   ├── rime.rs        # librime 安全封装（Session/Config/Levers API 等）
 │   │   └── main.rs        # CLI 入口（#[cfg(feature = "cli")]）
 │   └── tests/
+│       ├── config.rs      # config 子命令集成测试
 │       ├── shell_init.rs  # shell 快捷键绑定集成测试
 │       └── stdio.rs       # stdio 集成测试
 ├── rime-sys/              # FFI 绑定 crate
@@ -57,7 +58,8 @@ CLI 子命令：
 - `stdio` — 编辑器集成模式，Vim 风格按键输入，JSONL 输出
 - `install` — 在线安装 RIME 输入方案（下载 plum 脚本并通过 bash 执行）
 - `list-schemas` / `current-schema` / `set-schema` — 方案管理
-- `shell-init` — 输出 shell 补全脚本和可选的快捷键绑定
+- `shell-init` — 输出 shell 补全脚本（动态：`CompleteEnv` registration，覆盖所有子命令与运行时候选）和可选的快捷键绑定
+- `config` — 读写持久化的 RIME 配置（`get/set <key> <value>`，写入 `user.yaml` 的 `var/option/*` 开关，后续 `tui` 调用自动沿用；`<key>` 按前缀提示常用开关，提示但不限制输入）
 
 Feature flags：
 
@@ -188,7 +190,7 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 - TUI 诊断日志：设置 `RSIME_LOG=<文件路径>` 环境变量（或 `--log`）会输出每帧绘制、
   按键事件、commit、最终 stdout 输出等信息，排查 shell 集成问题时无需改动绑定即可开启
 - `install_cmd` 通过 HTTP 下载 plum 脚本并 pipe 给 bash，需要网络和 git
-- Rust edition 2024，workspace resolver 3，`clap` derive 模式，`clap_complete` 生成 shell 补全
+- Rust edition 2024，workspace resolver 3，`clap` derive 模式；`shell-init` 输出 `clap_complete` 的 `unstable-dynamic`（`CompleteEnv`）动态补全——`shell_init_cmd` 通过 self-spawn（`COMPLETE=<shell>` 调自身）取 registration 脚本，使所有子命令（含 `config` 的 `ArgValueCompleter` 运行时候选）共用动态入口，不再用静态 `generate`（两套都用 `complete -F`，无法共存）
 - `cli` feature 默认未启用，构建 CLI 需 `cargo build --features cli`
 - LLM 运行 git commit 时必须加 `-s`（生成 `Signed-off-by`），并添加
   `Assisted-by: <agent>:<模型名称>` trailer（如 `Assisted-by: claude:glm5.2`）
