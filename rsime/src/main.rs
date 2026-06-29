@@ -152,6 +152,10 @@ struct JsonStdioResponse {
     preedit: String,
     candidates: Vec<JsonCandidate>,
     highlighted: usize,
+    /// RIME 是否消费了该按键。false 表示按键未被处理（如 ascii_punct 开启时的
+    /// 标点，express_editor 的 DirectCommit 返回 kRejected 丢弃字符），调用者
+    /// 应自行直通原字符——rsime 不替它决定，以便编辑器侧与 autopairs 等配合。
+    consumed: bool,
 }
 
 fn init_rime() -> Result<Traits> {
@@ -465,13 +469,11 @@ fn run_stdio(session: &Session) -> Result<()> {
         while let Some(c) = session.commit() {
             commit.push_str(&c.text());
         }
-        // RIME 未消费按键时（如 ascii_punct 开启，标点经 punctuator 放行后由
-        // express_editor 的 DirectCommit 返回 kRejected——它只 ctx->Commit() 当前
-        // 组合，字符本身被丢弃，交给前端直通）。图形前端会自己输出该字符，rsime
-        // 也必须如此，否则 ascii_punct 等开关下标点会丢失。
-        if !consumed && (0x21..0x7f).contains(&key_code) {
-            commit.push(key_code as u8 as char);
-        }
+        // 不替调用者直通：如实报告 RIME 是否消费了该按键（consumed 字段），让调用者
+        // 决定如何处理未消费的字符。RIME 未消费时（如 ascii_punct 开启下的标点，
+        // express_editor DirectCommit 只 ctx->Commit() 组合、返回 kRejected 丢弃字符），
+        // commit 可能含组合提交，但字符本身要由调用者（rsime.nvim 等）自行直通，
+        // 以便它和 autopairs 等插件配合。
 
         let (preedit, candidates, highlighted) = match session.context() {
             Some(ctx) => {
@@ -496,6 +498,7 @@ fn run_stdio(session: &Session) -> Result<()> {
             preedit,
             candidates,
             highlighted,
+            consumed,
         };
         serde_json::to_writer(&mut writer, &resp)?;
         writeln!(writer)?;
