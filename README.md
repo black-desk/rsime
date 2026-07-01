@@ -6,6 +6,25 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # rsime
 
+[![checks][badge-shields-io-checks]][actions]
+[![commit activity][badge-shields-io-commit-activity]][commits]
+[![contributors][badge-shields-io-contributors]][contributors]
+[![release date][badge-shields-io-release-date]][releases]
+![commits since release][badge-shields-io-commits-since-release]
+[![codecov][badge-shields-io-codecov]][codecov]
+
+[badge-shields-io-checks]: https://img.shields.io/github/check-runs/black-desk/rsime/master
+[actions]: https://github.com/black-desk/rsime/actions
+[badge-shields-io-commit-activity]: https://img.shields.io/github/commit-activity/w/black-desk/rsime/master
+[commits]: https://github.com/black-desk/rsime/commits/master
+[badge-shields-io-contributors]: https://img.shields.io/github/contributors/black-desk/rsime
+[contributors]: https://github.com/black-desk/rsime/graphs/contributors
+[badge-shields-io-release-date]: https://img.shields.io/github/release-date/black-desk/rsime
+[releases]: https://github.com/black-desk/rsime/releases
+[badge-shields-io-commits-since-release]: https://img.shields.io/github/commits-since/black-desk/rsime/latest
+[badge-shields-io-codecov]: https://codecov.io/github/black-desk/rsime/graph/badge.svg?token=4D1JWTJ7J1
+[codecov]: https://codecov.io/github/black-desk/rsime
+
 一个基于 [RIME](https://rime.im/) 的命令行中文输入工具，适用于没有图形输入法的 TUI 环境。
 
 ## 功能
