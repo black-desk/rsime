@@ -196,5 +196,5 @@ RIME 交互通过本地 `rime-sys` crate（`rime-sys/`）。使用 `bindgen` 从
 - **RIME 未消费按键（DirectCommit）的处理**：`express_editor` 的 `DirectCommit`（librime `editor.cc`）对可打印字符只 `ctx->Commit()` 当前组合、返回 `kRejected` 丢弃字符本身，交给前端直通。典型场景是 `ascii_punct` 开启：punctuator 放行标点（`kNoop`）→ DirectCommit 丢弃 → 前端须直通，否则标点丢失。`tui` 作为最终前端，`process_key` 返回 not consumed 时自行直通可打印字符（0x21-0x7e）；`stdio` 作为代理只经 `consumed:bool` 字段如实报告（`commit` 仅含 RIME 真实 commit），由调用者决定直通（rsime.nvim 的处理见「未消费按键的直通」）
 - `cli` feature 默认未启用，构建 CLI 需 `cargo build --features cli`
 - LLM 运行 git commit 时必须加 `-s`（生成 `Signed-off-by`），并添加
-  `Assisted-by: <agent>:<模型名称>` trailer（如 `Assisted-by: claude:glm5.2`）
+  `Assisted-by: <agent>:<模型名称>` trailer（如 `Assisted-by: claude:glm-5.2`）
 - 当项目结构、架构或构建方式发生变化时，必须同步更新本文件（CLAUDE.md）
