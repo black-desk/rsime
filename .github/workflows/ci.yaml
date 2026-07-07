@@ -53,6 +53,7 @@ jobs:
               sudo apt install -y librime-dev
               ;;
             macOS)
+              brew update
               brew install librime pkg-config
               ;;
             *)
