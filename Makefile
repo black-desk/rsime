@@ -16,9 +16,6 @@ CARGO ?= cargo
 
 .PHONY: help all build test clippy fmt fmt-check install clean
 
-help: ## 显示所有目标
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-
 all: build ## 构建（默认目标）
 
 build: ## 构建 workspace（按 VCPKG_ROOT 自动选择系统/vcpkg 特性）
@@ -45,3 +42,6 @@ install: ## 安装 rsime CLI 到 ~/.cargo/bin（自动检测 VCPKG_ROOT）
 
 clean: ## 清理构建产物
 	$(CARGO) clean
+
+help: ## 显示所有目标
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
