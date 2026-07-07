@@ -22,26 +22,17 @@ jobs:
         env:
           CLEAN_IGNORE: rime-sys/vcpkg-overlay/**/*.patch
 
-  test:
-    name: ${{ matrix.name }}
+  autotools:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: linux (system librime)
-            os: ubuntu-latest
-            setup: sudo apt update && sudo apt install -y librime-dev
-          - name: linux (bundled-vcpkg)
-            os: ubuntu-latest
-            setup: ""
-            vcpkg-root: /usr/local/share/vcpkg
-          - name: macos (system librime)
-            os: macos-latest
-            setup: brew install librime pkg-config
-          - name: macos (bundled-vcpkg)
-            os: macos-latest
-            setup: ""
-            vcpkg-root: /usr/local/share/vcpkg
+        os:
+          - ubuntu-latest
+          - macos-latest
+        librime:
+          - system
+          - bundled-vcpkg
+    name: ${{ matrix.os }} (${{ matrix.librime }})
     permissions:
       id-token: write
       contents: write
@@ -54,22 +45,46 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Install system librime
-        if: matrix.setup != ''
-        run: ${{ matrix.setup }}
+        if: matrix.librime == 'system'
+        run: |
+          case "${{ runner.os }}" in
+            Linux)
+              sudo apt update
+              sudo apt install -y librime-dev
+              ;;
+            macOS)
+              brew install librime pkg-config
+              ;;
+            *)
+              echo "Unsupported runner OS: ${{ runner.os }}" >&2
+              exit 1
+              ;;
+          esac
 
-      # autotools action: checkout（递归子模块）→ 装 lcov → 跳过 configure →
-      # make（构建）→ make test（cargo-llvm-cov 产出 lcov.info）→ 上传 codecov。
-      # 特性（cli / cli,bundled-vcpkg）由 Makefile 按 VCPKG_ROOT 自动选择。
       - uses: black-desk/workflows/autotools@master
         env:
-          VCPKG_ROOT: ${{ matrix.vcpkg-root }}
+          VCPKG_ROOT: ${{ matrix.librime == 'bundled-vcpkg' && '/usr/local/share/vcpkg' || '' }}
+
+  rust:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - run: |
+          sudo apt update
+          sudo apt install -y librime-dev
+      - uses: black-desk/workflows/rust@master
+        with:
+          cargo-flags: ''
 
   pass:
     name: pass
     if: always()
     needs:
       - generic
-      - test
+      - autotools
+      - rust
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
