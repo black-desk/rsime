@@ -5,36 +5,37 @@
 #![cfg(feature = "cli")]
 
 use std::fs::{self, File};
-use std::os::fd::FromRawFd;
 use std::io::Write;
+use std::os::fd::FromRawFd;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 use clap_complete::CompleteEnv;
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
 use rsime::rime::{
-    deploy_on_changed, finalize, get_schema_list, initialize,
-    set_notification_handler, setup, DeployResult, Session, Traits,
-    KEY_BACKSPACE, KEY_DELETE, KEY_DOWN, KEY_END, KEY_ESCAPE, KEY_HOME, KEY_LEFT, KEY_PAGEDOWN,
-    KEY_PAGEUP, KEY_RETURN, KEY_RIGHT, KEY_TAB, KEY_UP, KEY_SPACE,
+    DeployResult, KEY_BACKSPACE, KEY_DELETE, KEY_DOWN, KEY_END, KEY_ESCAPE, KEY_HOME, KEY_LEFT,
+    KEY_PAGEDOWN, KEY_PAGEUP, KEY_RETURN, KEY_RIGHT, KEY_SPACE, KEY_TAB, KEY_UP, Session, Traits,
+    deploy_on_changed, finalize, get_schema_list, initialize, set_notification_handler, setup,
 };
 use serde::Serialize;
 
 static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
 
 fn log(msg: &str) {
-    let Ok(mut guard) = LOG_FILE.lock() else { return };
+    let Ok(mut guard) = LOG_FILE.lock() else {
+        return;
+    };
     let Some(file) = guard.as_mut() else { return };
     let _ = writeln!(file, "{}", msg);
 }
@@ -271,11 +272,9 @@ fn install_cmd(packages: &[String]) -> Result<()> {
         packages.to_vec()
     };
 
-    let plum_dir = PathBuf::from(
-        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-    )
-    .join(".config")
-    .join("rsime-plum");
+    let plum_dir = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+        .join(".config")
+        .join("rsime-plum");
 
     let mut child = Command::new("bash")
         .env("rime_dir", &rime_dir)
@@ -309,7 +308,9 @@ fn install_cmd(packages: &[String]) -> Result<()> {
 fn print_shell_bind(shell: &str, key: Option<&str>) -> Result<()> {
     use clap_complete::Shell;
 
-    let shell = shell.parse::<Shell>().map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
+    let shell = shell
+        .parse::<Shell>()
+        .map_err(|_| anyhow::anyhow!("unsupported shell: {shell}"))?;
     let default_bind = "\\ei";
     let bind = key.unwrap_or(default_bind);
 
@@ -318,7 +319,8 @@ fn print_shell_bind(shell: &str, key: Option<&str>) -> Result<()> {
     // 不再向 rsime 传任何命令行上下文（RSIME_* 全部移除）。
     match shell {
         Shell::Bash => {
-            println!(r#"# rsime TUI keybinding
+            println!(
+                r#"# rsime TUI keybinding
 stty -ixon
 rsime-widget() {{
     local output
@@ -328,12 +330,17 @@ rsime-widget() {{
         READLINE_POINT=$(( READLINE_POINT + ${{#output}} ))
     }}
 }}
-bind -x '"{bind}": rsime-widget'"#);
+bind -x '"{bind}": rsime-widget'"#
+            );
         }
         Shell::Zsh => {
             // 将 bash 风格的 \C-q 转换为 zsh 的 ^Q
-            let zsh_key = bind.replace("\\C-", "^").replace("\\e", "^[").replace('\\', "");
-            println!(r#"# rsime TUI keybinding
+            let zsh_key = bind
+                .replace("\\C-", "^")
+                .replace("\\e", "^[")
+                .replace('\\', "");
+            println!(
+                r#"# rsime TUI keybinding
 rsime-widget() {{
     local output
     output=$(rsime tui)
@@ -341,7 +348,8 @@ rsime-widget() {{
     zle reset-prompt
 }}
 zle -N rsime-widget
-bindkey '{zsh_key}' rsime-widget"#);
+bindkey '{zsh_key}' rsime-widget"#
+            );
         }
         Shell::Fish => {
             // 将 \C-q 转换为 \cq
@@ -349,8 +357,10 @@ bindkey '{zsh_key}' rsime-widget"#);
             // commandline -f repaint 强制 fish 全量重绘：rsime 在 prompt 下方画屏会扰乱 fish
             // 基于内部屏幕模型的差分重绘，必须 force repaint（等价于 zsh 的 `zle reset-prompt`、
             // bash 的 rl_forced_update_display）。fzf 的 fish 绑定同样以此收尾。
-            println!(r##"# rsime TUI keybinding
-bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output"; commandline -f repaint'"##);
+            println!(
+                r##"# rsime TUI keybinding
+bind {fish_key} 'rsime tui | read -l output; and commandline --insert "$output"; commandline -f repaint'"##
+            );
         }
         _ => bail!("unsupported shell for keybinding: {shell}"),
     }
@@ -606,7 +616,11 @@ fn tui_loop(
                     .iter()
                     .enumerate()
                     .map(|(i, c)| {
-                        let sel = if i == menu.highlighted_candidate_index { ">" } else { " " };
+                        let sel = if i == menu.highlighted_candidate_index {
+                            ">"
+                        } else {
+                            " "
+                        };
                         format!("{}{}.{}", sel, i + 1, c.text)
                     })
                     .collect();
@@ -661,14 +675,34 @@ fn tui_loop(
             let cand_text = candidates.join("  ");
             let cand_line = Paragraph::new(cand_text).style(Style::default());
 
-            f.render_widget(comp_line, Rect { y: area.y, height: 1, ..area });
-            f.render_widget(cand_line, Rect { y: area.y + 1, height: 1, ..area });
+            f.render_widget(
+                comp_line,
+                Rect {
+                    y: area.y,
+                    height: 1,
+                    ..area
+                },
+            );
+            f.render_widget(
+                cand_line,
+                Rect {
+                    y: area.y + 1,
+                    height: 1,
+                    ..area
+                },
+            );
 
             // 每帧诊断：记录视口位置、各段内容，排查"行消失/重复"
             log(&format!(
                 "draw f={} y={} h={}: preedit={:?} cp={} cands={} output={:?} cursor={}",
-                frame, area.y, area.height,
-                preedit, cursor_pos, candidates.len(), output, cursor,
+                frame,
+                area.y,
+                area.height,
+                preedit,
+                cursor_pos,
+                candidates.len(),
+                output,
+                cursor,
             ));
             frame += 1;
         })?;
@@ -686,10 +720,12 @@ fn tui_loop(
                     KeyCode::Esc => break,
                     KeyCode::Enter if preedit.is_empty() => break,
                     KeyCode::Enter => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_RETURN as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_RETURN as i32));
                     }
                     KeyCode::Backspace if !preedit.is_empty() => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_BACKSPACE as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_BACKSPACE as i32));
                     }
                     KeyCode::Backspace if *cursor > 0 => {
                         let byte_pos = output
@@ -750,16 +786,20 @@ fn tui_loop(
                         }
                     }
                     KeyCode::Up => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_UP as i32));
                     }
                     KeyCode::Down | KeyCode::Tab => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_DOWN as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_DOWN as i32));
                     }
                     KeyCode::PageUp => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEUP as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEUP as i32));
                     }
                     KeyCode::PageDown => {
-                        let _consumed = session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEDOWN as i32));
+                        let _consumed =
+                            session.process_key(rsime::rime::KeyEvent::new(KEY_PAGEDOWN as i32));
                     }
                     _ => {}
                 }

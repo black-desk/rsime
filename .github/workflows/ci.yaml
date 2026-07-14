@@ -11,7 +11,7 @@ on:
       - release/*
   pull_request:
   schedule:
-    - cron: '0 0 * * 0' # Runs every Sunday at midnight UTC
+    - cron: "0 0 * * 0" # Runs every Sunday at midnight UTC
   workflow_dispatch:
 
 jobs:
@@ -21,6 +21,11 @@ jobs:
       - uses: black-desk/workflows/generic@master
         env:
           CLEAN_IGNORE: rime-sys/vcpkg-overlay/**/*.patch
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: black-desk/workflows/format@master
 
   autotools:
     strategy:
@@ -77,13 +82,14 @@ jobs:
           sudo apt install -y librime-dev
       - uses: black-desk/workflows/rust@master
         with:
-          cargo-flags: ''
+          cargo-flags: ""
 
   pass:
     name: pass
     if: always()
     needs:
       - generic
+      - format
       - autotools
       - rust
     runs-on: ubuntu-latest
