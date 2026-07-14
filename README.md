@@ -13,19 +13,26 @@ SPDX-License-Identifier: GPL-3.0-or-later
 ![commits since release][badge-shields-io-commits-since-release]
 [![codecov][badge-shields-io-codecov]][codecov]
 
-[badge-shields-io-checks]: https://img.shields.io/github/check-runs/black-desk/rsime/master
+[badge-shields-io-checks]:
+  https://img.shields.io/github/check-runs/black-desk/rsime/master
 [actions]: https://github.com/black-desk/rsime/actions
-[badge-shields-io-commit-activity]: https://img.shields.io/github/commit-activity/w/black-desk/rsime/master
+[badge-shields-io-commit-activity]:
+  https://img.shields.io/github/commit-activity/w/black-desk/rsime/master
 [commits]: https://github.com/black-desk/rsime/commits/master
-[badge-shields-io-contributors]: https://img.shields.io/github/contributors/black-desk/rsime
+[badge-shields-io-contributors]:
+  https://img.shields.io/github/contributors/black-desk/rsime
 [contributors]: https://github.com/black-desk/rsime/graphs/contributors
-[badge-shields-io-release-date]: https://img.shields.io/github/release-date/black-desk/rsime
+[badge-shields-io-release-date]:
+  https://img.shields.io/github/release-date/black-desk/rsime
 [releases]: https://github.com/black-desk/rsime/releases
-[badge-shields-io-commits-since-release]: https://img.shields.io/github/commits-since/black-desk/rsime/latest
-[badge-shields-io-codecov]: https://codecov.io/github/black-desk/rsime/graph/badge.svg?token=4D1JWTJ7J1
+[badge-shields-io-commits-since-release]:
+  https://img.shields.io/github/commits-since/black-desk/rsime/latest
+[badge-shields-io-codecov]:
+  https://codecov.io/github/black-desk/rsime/graph/badge.svg?token=4D1JWTJ7J1
 [codecov]: https://codecov.io/github/black-desk/rsime
 
-一个基于 [RIME](https://rime.im/) 的命令行中文输入工具，适用于没有图形输入法的 TUI 环境。
+一个基于 [RIME](https://rime.im/)
+的命令行中文输入工具，适用于没有图形输入法的 TUI 环境。
 
 ## 功能
 
@@ -38,15 +45,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ## 前置条件
 
-> **Note（平台支持）**
-> rsime 目前仅支持 **Linux** 与 **macOS**，**暂不打算支持 Windows**。
+> **Note（平台支持）** rsime 目前仅支持 **Linux** 与
+> **macOS**，**暂不打算支持 Windows**。
 
 - [Rust](https://www.rust-lang.org/tools/install) 工具链
 - C/C++ 构建工具链（CMake、C 编译器等）
 - Git（用于获取子模块和安装方案）
 - librime，两种方式二选一：
-  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或 `brew install librime`（macOS）
-  - **vcpkg 自动编译**：需预装 [vcpkg](https://vcpkg.io/en/getting-started.html) 并设置 `VCPKG_ROOT` 环境变量，或确保 `vcpkg` 可执行文件在 `PATH` 中
+  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或
+    `brew install librime`（macOS）
+  - **vcpkg 自动编译**：需预装 [vcpkg](https://vcpkg.io/en/getting-started.html)
+    并设置 `VCPKG_ROOT` 环境变量，或确保 `vcpkg` 可执行文件在 `PATH` 中
 
 ## 构建
 
@@ -114,7 +123,8 @@ rsime set-schema double_pinyin_flypy
 
 **配置持久化开关（简繁/标点/全角等）：**
 
-开关状态写入 RIME 用户配置（`~/.config/rsime/user.yaml`），所有 `rsime tui` 调用自动沿用。
+开关状态写入 RIME 用户配置（`~/.config/rsime/user.yaml`），所有 `rsime tui`
+调用自动沿用。
 
 ```bash
 rsime config set var/option/simplification false   # 繁体输出（true=简体）
@@ -136,16 +146,17 @@ rsime shell-init fish --bind   # fish 版本
 
 > **Note（bash 已知限制）**
 >
-> 在 **bash** 上触发 rsime 时，prompt 所在的那一行会暂时变成**空行**，rsime 在其下方画屏；
-> 退出 rsime（提交候选词）后 bash 会把 prompt 和结果正常重画回来，**功能不受影响**。zsh 和
-> fish 不受此影响，prompt 全程可见。
+> 在 **bash**
+> 上触发 rsime 时，prompt 所在的那一行会暂时变成**空行**，rsime 在其下方画屏；退出 rsime（提交候选词）后 bash 会把 prompt 和结果正常重画回来，**功能不受影响**。zsh 和 fish 不受此影响，prompt 全程可见。
 >
-> 这是 bash 的 `bind -x` 机制导致的**固有行为**：bash 在执行 `bind -x` 绑定的命令**之前**，
-> 会无条件调用 readline 的 `rl_clear_visible_line()` 把当前命令行整行擦掉（见 bash 源码
-> `bashline.c` 的 `bash_execute_unix_command`）。这一步发生在 rsime 启动**之前**，rsime 无法
-> 阻止。目前**没有简单的绕过办法**：唯一的"绕过"是改用 readline 宏 + `shell-expand-line`
-> 替代 `bind -x`，但代价是只能在 emacs 模式下工作、且运行期间该行会显示 `rsime tui` 这类
-> 字面量，并不比空行更干净——fzf 在 bash ≥ 4 上的 Ctrl-T / Ctrl-R 也是同样的表现。
+> 这是 bash 的 `bind -x` 机制导致的**固有行为**：bash 在执行 `bind -x`
+> 绑定的命令**之前**，会无条件调用 readline 的 `rl_clear_visible_line()`
+> 把当前命令行整行擦掉（见 bash 源码 `bashline.c` 的
+> `bash_execute_unix_command`）。这一步发生在 rsime 启动**之前**，rsime 无法阻止。目前**没有简单的绕过办法**：唯一的"绕过"是改用 readline 宏 +
+> `shell-expand-line` 替代
+> `bind -x`，但代价是只能在 emacs 模式下工作、且运行期间该行会显示 `rsime tui`
+> 这类字面量，并不比空行更干净——fzf 在 bash ≥ 4 上的 Ctrl-T /
+> Ctrl-R 也是同样的表现。
 
 **写入调试日志：**
 
@@ -155,17 +166,20 @@ rsime -l /tmp/rsime.log tui
 
 ### 环境变量
 
-| 变量 | 说明 | 默认值 |
-|---|---|---|
+| 变量                 | 说明                                          | 默认值            |
+| -------------------- | --------------------------------------------- | ----------------- |
 | `RIME_USER_DATA_DIR` | RIME 用户数据目录路径（同时用作共享数据目录） | `~/.config/rsime` |
 
 ## Neovim 插件
 
-rsime 自带 Neovim 插件，通过 `rsime stdio` 子进程在 Neovim 中实现中文输入。纯 Lua 实现，无外部依赖。
+rsime 自带 Neovim 插件，通过 `rsime stdio`
+子进程在 Neovim 中实现中文输入。纯 Lua 实现，无外部依赖。
 
 ### 安装
 
-Neovim 插件位于仓库根目录的 `rsime.nvim/`，根目录的 `lua/` 和 `plugin/` 是指向该目录的符号链接，因此插件管理器可直接使用。使用前需自行编译安装 `rsime` 二进制，构建方法参见上方的「构建」章节。
+Neovim 插件位于仓库根目录的 `rsime.nvim/`，根目录的 `lua/` 和 `plugin/`
+是指向该目录的符号链接，因此插件管理器可直接使用。使用前需自行编译安装 `rsime`
+二进制，构建方法参见上方的「构建」章节。
 
 **lazy.nvim：**
 
@@ -206,11 +220,11 @@ require("rsime").setup{
 
 ### 命令
 
-| 命令 | 说明 |
-|---|---|
-| `:RsimeEnable` | 在当前 buffer 激活中文输入 |
+| 命令            | 说明                       |
+| --------------- | -------------------------- |
+| `:RsimeEnable`  | 在当前 buffer 激活中文输入 |
 | `:RsimeDisable` | 停用当前 buffer 的中文输入 |
-| `:RsimeToggle` | 切换激活/停用状态 |
+| `:RsimeToggle`  | 切换激活/停用状态          |
 
 ### 使用方式
 
@@ -225,8 +239,8 @@ require("rsime").setup{
 
 ## 免责声明
 
-> **Warning**
-> 本项目的绝大部分代码由 AI 辅助生成（vibe coding），尚未经过完整的人工审查。可能存在逻辑错误、安全漏洞或不规范的实现。使用前请自行评估风险，生产环境请谨慎使用。
+> **Warning** 本项目的绝大部分代码由 AI 辅助生成（vibe
+> coding），尚未经过完整的人工审查。可能存在逻辑错误、安全漏洞或不规范的实现。使用前请自行评估风险，生产环境请谨慎使用。
 
 ## 许可证
 
@@ -234,7 +248,8 @@ require("rsime").setup{
 
 该项目遵守 [REUSE 规范]。
 
-你可以使用 [reuse-tool](https://github.com/fsfe/reuse-tool) 生成这个项目的 SPDX 列表：
+你可以使用 [reuse-tool](https://github.com/fsfe/reuse-tool)
+生成这个项目的 SPDX 列表：
 
 ```bash
 reuse spdx

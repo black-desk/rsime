@@ -43,7 +43,8 @@ fn find_vcpkg_root() -> Result<PathBuf, String> {
         "bundled-vcpkg feature requires vcpkg, but it was not found.\n",
         "Install vcpkg: https://vcpkg.io/en/getting-started.html\n",
         "Then either set VCPKG_ROOT or ensure the vcpkg executable is in PATH."
-    ).to_string())
+    )
+    .to_string())
 }
 
 #[cfg(feature = "bundled-vcpkg")]
@@ -63,7 +64,11 @@ fn vcpkg_triplet() -> Result<String, String> {
 }
 
 #[cfg(feature = "bundled-vcpkg")]
-fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path, target_dir: &Path) -> Result<PathBuf, String> {
+fn run_vcpkg_install(
+    manifest_dir: &Path,
+    vcpkg_root: &Path,
+    target_dir: &Path,
+) -> Result<PathBuf, String> {
     let vcpkg_bin = vcpkg_root.join("vcpkg");
 
     let triplet = vcpkg_triplet()?;
@@ -82,8 +87,9 @@ fn run_vcpkg_install(manifest_dir: &Path, vcpkg_root: &Path, target_dir: &Path) 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
-            "vcpkg install failed with status: {}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
-        , output.status));
+            "vcpkg install failed with status: {}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}",
+            output.status
+        ));
     }
 
     let installed_dir = install_root.join(&triplet);
@@ -125,10 +131,15 @@ fn main() {
 
         // Derive target/ from OUT_DIR: target/<profile>/build/<hash>/out
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let target_dir = out_dir.parent().unwrap()
-            .parent().unwrap()
-            .parent().unwrap()
-            .parent().unwrap();
+        let target_dir = out_dir
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
 
         let installed_dir = run_vcpkg_install(&manifest_dir, &vcpkg_root, &target_dir)
             .expect("vcpkg install for librime failed");
@@ -143,7 +154,9 @@ fn main() {
                 format!("{}:{}", pkg_config_dir.to_string_lossy(), existing)
             };
             // SAFETY: build.rs is single-threaded; setting an env var here is safe.
-            unsafe { env::set_var("PKG_CONFIG_PATH", &new_path); }
+            unsafe {
+                env::set_var("PKG_CONFIG_PATH", &new_path);
+            }
         }
     }
 
@@ -151,7 +164,11 @@ fn main() {
         .probe("rime")
         .expect("Failed to find librime via pkg-config. Is librime installed?");
 
-    let include_dirs: Vec<String> = lib.include_paths.iter().map(|p| p.to_string_lossy().into()).collect();
+    let include_dirs: Vec<String> = lib
+        .include_paths
+        .iter()
+        .map(|p| p.to_string_lossy().into())
+        .collect();
 
     // C++ standard library and other transitive deps are declared in rime.pc
     // (Libs.private), so pkg-config handles them automatically.

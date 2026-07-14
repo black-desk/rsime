@@ -1,5 +1,3 @@
 {
-  "dependencies": [
-    "rime"
-  ]
+  "dependencies": ["rime"]
 }

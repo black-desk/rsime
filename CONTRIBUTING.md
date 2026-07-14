@@ -14,8 +14,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 - C/C++ 构建工具链（CMake、C 编译器等）
 - Git（用于获取子模块和安装方案）
 - librime，两种方式二选一：
-  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或 `brew install librime`（macOS）
-  - **vcpkg 自动编译**：需安装 [vcpkg](https://vcpkg.io/en/getting-started.html) 并设置 `VCPKG_ROOT` 环境变量
+  - **系统安装**：如 `apt install librime-dev`（Ubuntu）或
+    `brew install librime`（macOS）
+  - **vcpkg 自动编译**：需安装 [vcpkg](https://vcpkg.io/en/getting-started.html)
+    并设置 `VCPKG_ROOT` 环境变量
 
 ## 构建与开发
 
@@ -66,27 +68,27 @@ scripts/ls-todo.sh       — 列出项目中的 TODO/FIXME 项
 ## 测试
 
 测试通过 `assert_cmd` 以子进程方式运行 `rsime stdio`。`setup_rime_env()` 将
-`~/.config/rsime` 复制到临时目录并设为 `RIME_USER_DATA_DIR`，确保测试有可用的
-输入方案。
+`~/.config/rsime` 复制到临时目录并设为
+`RIME_USER_DATA_DIR`，确保测试有可用的输入方案。
 
 运行测试前需要先完成 debug 构建（`make test` 会自动处理）。
 
 ## Commit 约定
 
 - **语言**：commit message、注释、文档、帮助信息等统一使用中文编写
-- **前缀**：使用常规前缀，参考 `git log` 中的现有风格：
-  `feat:`, `fix:`, `docs:`, `build(vcpkg):`, `feat(nvim):` 等
+- **前缀**：使用常规前缀，参考 `git log` 中的现有风格： `feat:`, `fix:`,
+  `docs:`, `build(vcpkg):`, `feat(nvim):` 等
 - **Signed-off-by**：commit 时加 `-s`，生成 `Signed-off-by` trailer
-- **Assisted-by**：使用 AI 辅助开发时，添加 `Assisted-by: agent:<工具名>` trailer，
-  如 `Assisted-by: agent:claude`
+- **Assisted-by**：使用 AI 辅助开发时，添加 `Assisted-by: agent:<工具名>`
+  trailer，如 `Assisted-by: agent:claude`
 
 ## 许可证
 
 - 代码：GPL-3.0-or-later
 - 文档、配置文件、脚本：MIT
 
-本项目遵循 [REUSE 规范](https://reuse.software/spec-3.3/)。所有文件须包含
-SPDX `SPDX-FileCopyrightText` 和 `SPDX-License-Identifier` 头。
+本项目遵循 [REUSE 规范](https://reuse.software/spec-3.3/)。所有文件须包含SPDX
+`SPDX-FileCopyrightText` 和 `SPDX-License-Identifier` 头。
 
 可使用 [reuse-tool](https://github.com/fsfe/reuse-tool) 检查：
 

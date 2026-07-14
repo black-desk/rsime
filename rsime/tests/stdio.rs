@@ -40,7 +40,10 @@ fn stdio_basic_commit() {
     // The last response should have a commit (user selected a candidate)
     let last = responses.last().unwrap();
     let commit = last["commit"].as_str().unwrap();
-    assert!(!commit.is_empty(), "last response should have committed text");
+    assert!(
+        !commit.is_empty(),
+        "last response should have committed text"
+    );
     assert_eq!(last["preedit"].as_str().unwrap(), "");
     assert!(last["candidates"].as_array().unwrap().is_empty());
 }
@@ -136,7 +139,10 @@ fn stdio_backspace() {
     // After backspace, preedit should be shorter than "ni"
     let after_bs = &responses[2];
     let preedit = after_bs["preedit"].as_str().unwrap();
-    assert!(!preedit.contains("ni"), "backspace should remove last input");
+    assert!(
+        !preedit.contains("ni"),
+        "backspace should remove last input"
+    );
 }
 
 #[test]
@@ -153,8 +159,14 @@ fn stdio_response_schema_has_required_fields() {
     // Every response must contain these four fields
     assert!(resp.get("commit").is_some(), "missing 'commit' field");
     assert!(resp.get("preedit").is_some(), "missing 'preedit' field");
-    assert!(resp.get("candidates").is_some(), "missing 'candidates' field");
-    assert!(resp.get("highlighted").is_some(), "missing 'highlighted' field");
+    assert!(
+        resp.get("candidates").is_some(),
+        "missing 'candidates' field"
+    );
+    assert!(
+        resp.get("highlighted").is_some(),
+        "missing 'highlighted' field"
+    );
 }
 
 #[test]
@@ -185,7 +197,10 @@ fn stdio_unknown_keys_ignored() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let responses = parse_jsonl(&stdout);
 
-    assert!(responses.is_empty(), "unknown keys should produce no response");
+    assert!(
+        responses.is_empty(),
+        "unknown keys should produce no response"
+    );
 }
 
 #[test]

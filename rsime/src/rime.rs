@@ -21,8 +21,8 @@ use std::ptr::null_mut;
 use std::sync::{LazyLock, Mutex};
 
 use rime_sys::{
-    rime_get_api, rime_struct, RimeApi, RimeCandidateListIterator, RimeCommit, RimeConfig,
-    RimeConfigIterator, RimeContext, RimeSchemaList, RimeSessionId, RimeStatus,
+    RimeApi, RimeCandidateListIterator, RimeCommit, RimeConfig, RimeConfigIterator, RimeContext,
+    RimeSchemaList, RimeSessionId, RimeStatus, rime_get_api, rime_struct,
 };
 
 // Re-export commonly used keycodes
@@ -32,8 +32,8 @@ pub use rime_sys::{
     RimeKeyCode_XK_Escape as KEY_ESCAPE, RimeKeyCode_XK_Home as KEY_HOME,
     RimeKeyCode_XK_Left as KEY_LEFT, RimeKeyCode_XK_Page_Down as KEY_PAGEDOWN,
     RimeKeyCode_XK_Page_Up as KEY_PAGEUP, RimeKeyCode_XK_Return as KEY_RETURN,
-    RimeKeyCode_XK_Right as KEY_RIGHT, RimeKeyCode_XK_Tab as KEY_TAB,
-    RimeKeyCode_XK_Up as KEY_UP, RimeKeyCode_XK_space as KEY_SPACE,
+    RimeKeyCode_XK_Right as KEY_RIGHT, RimeKeyCode_XK_Tab as KEY_TAB, RimeKeyCode_XK_Up as KEY_UP,
+    RimeKeyCode_XK_space as KEY_SPACE,
 };
 
 // Re-export modifier constants
@@ -281,8 +281,7 @@ pub enum DeployResult {
     Failure,
 }
 
-static DEPLOY_RESULT: LazyLock<Mutex<Option<DeployResult>>> =
-    LazyLock::new(|| Mutex::new(None));
+static DEPLOY_RESULT: LazyLock<Mutex<Option<DeployResult>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Start maintenance (deployment) on workspace changes and wait for completion.
 pub fn deploy_on_changed() -> DeployResult {
@@ -422,9 +421,7 @@ impl Session {
     /// `false` if the engine did not handle it (caller should forward it).
     #[must_use = "the return value indicates whether the key was consumed; unhandled keys should be forwarded"]
     pub fn process_key(&self, key: KeyEvent) -> bool {
-        unsafe {
-            rime_api_call!(process_key, self.session_id, key.key_code, key.modifiers) != 0
-        }
+        unsafe { rime_api_call!(process_key, self.session_id, key.key_code, key.modifiers) != 0 }
     }
 
     /// Commit the current composition.
@@ -618,9 +615,11 @@ impl Session {
         if ok == 0 {
             return Ok(None);
         }
-        Ok(Some(
-            unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char).to_string_lossy().to_string() },
-        ))
+        Ok(Some(unsafe {
+            CStr::from_ptr(buf.as_ptr() as *const c_char)
+                .to_string_lossy()
+                .to_string()
+        }))
     }
 
     // --- Schema ---
@@ -639,9 +638,11 @@ impl Session {
         if ok == 0 {
             return None;
         }
-        Some(
-            unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char).to_string_lossy().to_string() },
-        )
+        Some(unsafe {
+            CStr::from_ptr(buf.as_ptr() as *const c_char)
+                .to_string_lossy()
+                .to_string()
+        })
     }
 
     /// Select a schema by ID for this session.
@@ -656,14 +657,20 @@ impl Session {
     }
 
     /// Get the display label for a state option.
-    pub fn get_state_label(&self, option_name: &str, state: bool) -> anyhow::Result<Option<String>> {
+    pub fn get_state_label(
+        &self,
+        option_name: &str,
+        state: bool,
+    ) -> anyhow::Result<Option<String>> {
         let s = CString::new(option_name)?;
         let ptr =
             unsafe { rime_api_call!(get_state_label, self.session_id, s.as_ptr(), state as c_int) };
         if ptr.is_null() {
             Ok(None)
         } else {
-            Ok(Some(unsafe { CStr::from_ptr(ptr).to_string_lossy().to_string() }))
+            Ok(Some(unsafe {
+                CStr::from_ptr(ptr).to_string_lossy().to_string()
+            }))
         }
     }
 
@@ -1084,11 +1091,7 @@ impl Config {
         let k = CString::new(key).ok()?;
         let mut value: c_int = 0;
         let ok = unsafe { rime_api_call!(config_get_bool, self.ptr(), k.as_ptr(), &mut value) };
-        if ok == 0 {
-            None
-        } else {
-            Some(value != 0)
-        }
+        if ok == 0 { None } else { Some(value != 0) }
     }
 
     /// Get an integer config value.
@@ -1096,11 +1099,7 @@ impl Config {
         let k = CString::new(key).ok()?;
         let mut value: c_int = 0;
         let ok = unsafe { rime_api_call!(config_get_int, self.ptr(), k.as_ptr(), &mut value) };
-        if ok == 0 {
-            None
-        } else {
-            Some(value)
-        }
+        if ok == 0 { None } else { Some(value) }
     }
 
     /// Get a double config value.
@@ -1108,11 +1107,7 @@ impl Config {
         let k = CString::new(key).ok()?;
         let mut value: c_double = 0.0;
         let ok = unsafe { rime_api_call!(config_get_double, self.ptr(), k.as_ptr(), &mut value) };
-        if ok == 0 {
-            None
-        } else {
-            Some(value)
-        }
+        if ok == 0 { None } else { Some(value) }
     }
 
     /// Get a string config value.
@@ -1268,7 +1263,11 @@ impl Iterator for ConfigIterator {
         }
         Some(ConfigEntry {
             key: unsafe { CStr::from_ptr(self.inner.key).to_string_lossy().to_string() },
-            path: unsafe { CStr::from_ptr(self.inner.path).to_string_lossy().to_string() },
+            path: unsafe {
+                CStr::from_ptr(self.inner.path)
+                    .to_string_lossy()
+                    .to_string()
+            },
         })
     }
 }
@@ -1305,7 +1304,11 @@ macro_rules! dir_query_fn {
         pub fn $fn_name() -> String {
             let mut buf = [0u8; 1024];
             unsafe { rime_api_call!($api_field, buf.as_mut_ptr() as *mut c_char, 1024) };
-            unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char).to_string_lossy().to_string() }
+            unsafe {
+                CStr::from_ptr(buf.as_ptr() as *const c_char)
+                    .to_string_lossy()
+                    .to_string()
+            }
         }
     };
 }
@@ -1447,7 +1450,10 @@ impl CustomSettings {
         if ok == 0 {
             return None;
         }
-        Some(ConfigBorrow { inner: config, _marker: std::marker::PhantomData })
+        Some(ConfigBorrow {
+            inner: config,
+            _marker: std::marker::PhantomData,
+        })
     }
 }
 
@@ -1600,7 +1606,10 @@ impl Drop for SwitcherSettings {
             // implementation. The levers API does not provide a dedicated
             // `switcher_settings_destroy`; `custom_settings_destroy` correctly
             // handles both types through C++ virtual destruction.
-            rime_levers_call!(custom_settings_destroy, self.0 as *mut rime_sys::RimeCustomSettings);
+            rime_levers_call!(
+                custom_settings_destroy,
+                self.0 as *mut rime_sys::RimeCustomSettings
+            );
         }
     }
 }
