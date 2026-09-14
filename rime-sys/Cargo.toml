@@ -16,5 +16,19 @@ license = "GPL-3.0-or-later"
 bundled-vcpkg = []
 
 [build-dependencies]
-bindgen = "0.73"
+# FIXME:
+# bindgen 0.73's default features are ["logging", "prettyplease", "runtime"].
+# We explicitly turn off "prettyplease":
+# bindgen 0.73.2 depends on syn ">=2, <4", so cargo unifies it with the
+# syn 3 already required elsewhere in the graph (serde_derive/clap_derive).
+# prettyplease, however, stays on 0.2.x (pinned by wit-bindgen) and is built
+# against syn 2; the mismatched types make bindgen fail to compile (E0277)
+# whenever its "prettyplease" feature is enabled.
+# This project never opts into Formatter::Prettyplease (bindgen's default
+# formatter is rustfmt), so the feature is simply disabled to avoid the issue.
+# Default features can be restored once upstream fixes syn 3 compatibility.
+bindgen = { version = "0.73", default-features = false, features = [
+    "logging",
+    "runtime",
+] }
 pkg-config = "0.3"
